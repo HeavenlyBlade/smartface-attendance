@@ -1,5 +1,5 @@
-﻿Flask==3.0.3
-mysql-connector-python==8.4.0
+Flask==3.0.3
+psycopg2-binary==2.9.9
 deepface==0.0.93
 tf-keras==2.19.0
 tensorflow==2.19.1

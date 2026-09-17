@@ -1,4 +1,4 @@
-﻿"""
+"""
 routes/attendance.py — Attendance Blueprint (fully implemented)
 
 Routes

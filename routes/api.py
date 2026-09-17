@@ -1,4 +1,4 @@
-﻿"""
+"""
 routes/api.py — JSON API Blueprint for SmartFace
 
 Endpoints
@@ -178,7 +178,8 @@ def enroll():
     try:
         conn = get_connection()
         conn.autocommit = False
-        cursor = conn.cursor(dictionary=True)
+        import psycopg2.extras as _pgx
+        cursor = conn.cursor(cursor_factory=_pgx.RealDictCursor)
 
         # ---- Step A: INSERT users row --------------------------------
         try:

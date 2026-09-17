@@ -32,7 +32,7 @@ from datetime import datetime, time as dt_time
 
 import config
 from models.db import execute_query
-from mysql.connector import Error as MySQLError
+MySQLError = Exception  # psycopg2 migration
 
 # ---------------------------------------------------------------------------
 # Module-level logger

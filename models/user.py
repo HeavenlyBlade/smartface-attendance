@@ -22,7 +22,7 @@ delete_user(user_id)                → bool
 import logging
 import math
 
-from mysql.connector import Error as MySQLError
+MySQLError = Exception  # psycopg2 migration
 
 from models.db import execute_query
 

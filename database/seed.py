@@ -32,6 +32,7 @@ if _project_root not in sys.path:
 
 from werkzeug.security import generate_password_hash
 from models.db import get_connection, execute_query, execute_many
+import psycopg2.extras
 import config  # noqa: F401 — triggers .env load and sets DB_* constants
 
 # ---------------------------------------------------------------------------
@@ -182,7 +183,7 @@ def seed() -> None:
 
     conn = get_connection()
     conn.autocommit = False
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
         # ---------------------------------------------------------------- #
