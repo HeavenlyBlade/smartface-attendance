@@ -1,0 +1,89 @@
+﻿{% extends "base.html" %}
+{% block title %}Audit Log{% endblock %}
+{% block content %}
+<div class="page-wrapper">
+  <div class="page-header">
+    <h1 class="page-title">Audit Log</h1>
+    <p class="page-subtitle">Reverse-chronological record of all significant system actions.</p>
+  </div>
+
+  <!-- Filter Form -->
+  <div style="background:var(--color-white);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:1.25rem 1.5rem;margin-bottom:1.5rem;">
+    <form method="GET" action="{{ url_for('admin.audit_log') }}">
+      <div style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;">
+        <div style="display:flex;flex-direction:column;gap:0.3rem;">
+          <label style="font-size:0.8rem;font-weight:600;color:var(--color-muted);text-transform:uppercase;" for="a-action">Action Type</label>
+          <select id="a-action" name="action" class="form-control">
+            <option value="">All Actions</option>
+            {% for val, label in action_choices %}
+            <option value="{{ val }}" {% if action_filter==val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:0.3rem;">
+          <label style="font-size:0.8rem;font-weight:600;color:var(--color-muted);text-transform:uppercase;" for="a-start">From</label>
+          <input id="a-start" name="start_date" type="date" class="form-control" value="{{ start_date }}" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:0.3rem;">
+          <label style="font-size:0.8rem;font-weight:600;color:var(--color-muted);text-transform:uppercase;" for="a-end">To</label>
+          <input id="a-end" name="end_date" type="date" class="form-control" value="{{ end_date }}" />
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:flex-end;">
+          <button type="submit" class="btn btn-primary">Filter</button>
+          <a href="{{ url_for('admin.audit_log') }}" class="btn btn-outline-primary">Clear</a>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-header-title">Audit Entries
+        <span style="font-weight:400;color:var(--color-muted);font-size:0.85rem;margin-left:0.5rem;">({{ total }} total)</span>
+      </span>
+    </div>
+    <div class="card-body" style="padding:0;">
+      {% if entries %}
+      <div class="table-wrapper" style="border:none;border-radius:0;">
+        <table class="table">
+          <thead>
+            <tr><th>Timestamp</th><th>User ID</th><th>Action</th><th>Details</th><th>IP Address</th></tr>
+          </thead>
+          <tbody>
+            {% for e in entries %}
+            <tr>
+              <td style="white-space:nowrap;">{{ e.timestamp }}</td>
+              <td>{{ e.user_id or '—' }}</td>
+              <td><code style="font-size:0.8rem;">{{ e.action }}</code></td>
+              <td style="max-width:350px;word-break:break-word;">{{ e.details }}</td>
+              <td>{{ e.ip_address or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if pages > 1 %}
+      <div class="card-footer">
+        <nav class="pager" aria-label="Audit log pagination">
+          {% if current_page > 1 %}
+          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.audit_log', page=current_page-1, action=action_filter or '', start_date=start_date, end_date=end_date) }}">← Prev</a>
+          {% else %}<button class="btn btn-outline-primary btn-sm" disabled>← Prev</button>{% endif %}
+          <span style="font-size:0.82rem;color:var(--color-muted);padding:0 0.5rem;">Page {{ current_page }} of {{ pages }}</span>
+          {% if current_page < pages %}
+          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.audit_log', page=current_page+1, action=action_filter or '', start_date=start_date, end_date=end_date) }}">Next →</a>
+          {% else %}<button class="btn btn-outline-primary btn-sm" disabled>Next →</button>{% endif %}
+        </nav>
+      </div>
+      {% endif %}
+
+      {% else %}
+      <div style="text-align:center;padding:3rem;color:var(--color-muted);">
+        <div style="font-size:2.5rem;">📋</div>
+        <p>No audit log entries found.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+﻿{% extends "base.html" %}
+{% block title %}My Attendance{% endblock %}
+{% block content %}
+<div class="page-wrapper">
+  <div class="page-header">
+    <h1 class="page-title">My Attendance</h1>
+    <p class="page-subtitle">Your personal attendance history, sorted by most recent date.</p>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-header-title">Attendance Records</span></div>
+    <div class="card-body" style="padding:0;">
+      {% if records %}
+      <div class="table-wrapper" style="border:none;border-radius:0;">
+        <table class="table">
+          <thead>
+            <tr><th>Date</th><th>Time In</th><th>Time Out</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {% for r in records %}
+            <tr>
+              <td>{{ r.date }}</td>
+              <td>{{ r.time_in  or '—' }}</td>
+              <td>{{ r.time_out or '—' }}</td>
+              <td>
+                {% if r.status == 'present' %}<span class="status-badge status-present">Present</span>
+                {% elif r.status == 'late'    %}<span class="status-badge status-late">Late</span>
+                {% elif r.status == 'absent'  %}<span class="status-badge">Absent</span>
+                {% elif r.status == 'manual'  %}<span class="status-badge status-manual">Manual</span>
+                {% else %}<span class="status-badge">{{ r.status or '—' }}</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="text-align:center;padding:3rem;color:var(--color-muted);">
+        <div style="font-size:2.5rem;">📅</div>
+        <p>No attendance records found.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

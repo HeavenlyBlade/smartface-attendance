@@ -1,0 +1,288 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="SmartFace — Real-Time Facial Recognition Attendance System, St. Anne College Lucena, Inc." />
+  <title>{% block title %}SmartFace{% endblock %} — SACLI</title>
+
+  <!-- Favicon (uses logo if present, silent otherwise) -->
+  <link rel="icon" type="image/png"
+        href="{{ url_for('static', filename='img/sacli_logo.png') }}"
+        onerror="this.href='data:,'">
+
+  <!-- SACLI stylesheet -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+
+    <!-- Lucide Icons (lightweight SVG icon set) -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  {% block head %}{% endblock %}
+</head>
+
+<body class="{% block body_class %}{% endblock %}">
+
+  <!-- =========================================================
+       Navigation Bar
+       Role-aware: links are rendered based on session['role'].
+       ========================================================= -->
+  <nav class="navbar" role="navigation" aria-label="Main navigation">
+
+    <!-- Brand -->
+    <a class="navbar-brand" href="{{ url_for('auth.index') }}">
+      <img class="navbar-brand-logo"
+           src="{{ url_for('static', filename='img/sacli_logo.png') }}"
+           alt="SACLI logo"
+           onerror="this.style.display='none'" />
+      <span class="navbar-brand-text">
+        <span class="navbar-brand-title">SmartFace</span>
+        <span class="navbar-brand-subtitle">St. Anne College Lucena, Inc.</span>
+      </span>
+    </a>
+
+    <!-- Hamburger toggle (mobile) -->
+    <button class="navbar-toggler"
+            id="navbarToggler"
+            aria-controls="mainNav"
+            aria-expanded="false"
+            aria-label="Toggle navigation">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+
+    <!-- Navigation links — rendered conditionally by role -->
+    <ul class="navbar-nav" id="mainNav" role="list">
+
+      {% if session.get('role') == 'admin' %}
+        {# Admin: full access #}
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'attendance.dashboard' %}active{% endif %}"
+             href="{{ url_for('attendance.dashboard') }}">
+            Dashboard
+          </a>
+        </li>
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'attendance.kiosk' %}active{% endif %}"
+             href="{{ url_for('attendance.kiosk') }}">
+            Kiosk
+          </a>
+        </li>
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'admin.enroll_page' %}active{% endif %}"
+             href="{{ url_for('admin.enroll_page') }}">
+            Enroll
+          </a>
+        </li>
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'admin.users' %}active{% endif %}"
+             href="{{ url_for('admin.users') }}">
+            Users
+          </a>
+        </li>
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'attendance.reports' %}active{% endif %}"
+             href="{{ url_for('attendance.reports') }}">
+            Reports
+          </a>
+        </li>
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'admin.audit_log' %}active{% endif %}"
+             href="{{ url_for('admin.audit_log') }}">
+            Audit Log
+          </a>
+        </li>
+
+      {% elif session.get('role') == 'faculty' %}
+        {# Faculty/Staff: operational access #}
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'attendance.dashboard' %}active{% endif %}"
+             href="{{ url_for('attendance.dashboard') }}">
+            Dashboard
+          </a>
+        </li>
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'attendance.kiosk' %}active{% endif %}"
+             href="{{ url_for('attendance.kiosk') }}">
+            Kiosk
+          </a>
+        </li>
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'attendance.reports' %}active{% endif %}"
+             href="{{ url_for('attendance.reports') }}">
+            Reports
+          </a>
+        </li>
+
+      {% elif session.get('role') == 'student' %}
+        {# Student: self-service only #}
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'attendance.my_attendance' %}active{% endif %}"
+             href="{{ url_for('attendance.my_attendance') }}">
+            My Attendance
+          </a>
+        </li>
+
+      {% endif %}
+      {# User chip — shows name + role pill #}
+      {% if session.get("user_id") %}
+        <li class="page-item nav-user-chip" style="pointer-events:none;">
+          <span class="nav-user-avatar">{{ (session.get("full_name") or "U")[0].upper() }}</span>
+          <span class="nav-user-name">{{ session.get("full_name", "").split()[0] }}</span>
+        </li>
+      {% endif %}
+
+      {# Logout — shown to any authenticated user #}
+      {% if session.get('user_id') %}
+        <li class="page-item">
+          <a class="nav-link nav-link-logout"
+             href="{{ url_for('auth.logout') }}"
+             aria-label="Log out of SmartFace">
+            Logout
+          </a>
+        </li>
+      {% endif %}
+
+    </ul>{# /navbar-nav #}
+  </nav>{# /navbar #}
+
+  <!-- =========================================================
+       Flash Messages
+       Renders messages queued by Flask's flash() function.
+       ========================================================= -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="page-wrapper" style="padding-bottom: 0; padding-top: 1rem;">
+        {% for category, message in messages %}
+          {#
+            Flask flash categories → CSS alert classes:
+              'error'   → alert-danger
+              'success' → alert-success
+              'warning' → alert-warning
+              'info'    → alert-info  (default)
+          #}
+          <div class="alert alert-{{ 'danger' if category == 'error' else category }}"
+               role="alert"
+               aria-live="polite">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- =========================================================
+       Main Content
+       ========================================================= -->
+  <main id="main-content" tabindex="-1">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- =========================================================
+       Toast Notification Container
+       JS shows/hides individual .toast elements inside here.
+       showToast(message, type='success') in base scripts.
+       ========================================================= -->
+  <div id="toast-container" aria-live="polite" aria-atomic="true">
+    {# Toast elements are injected dynamically by JS #}
+  </div>
+
+  <!-- =========================================================
+       Audio Cues
+       Triggered via JS after recognition responses.
+         successSound.play()  — matched known face
+         failSound.play()     — Unknown face
+       Source files are optional; audio is silent if absent.
+       ========================================================= -->
+  <audio id="success-sound" preload="auto" aria-hidden="true">
+    <source src="{{ url_for('static', filename='audio/success.mp3') }}" type="audio/mpeg" />
+    <source src="{{ url_for('static', filename='audio/success.ogg') }}" type="audio/ogg" />
+  </audio>
+  <audio id="fail-sound" preload="auto" aria-hidden="true">
+    <source src="{{ url_for('static', filename='audio/fail.mp3') }}" type="audio/mpeg" />
+    <source src="{{ url_for('static', filename='audio/fail.ogg') }}" type="audio/ogg" />
+  </audio>
+
+  <!-- =========================================================
+       Base JavaScript Utilities
+       ========================================================= -->
+  <script>
+    /* ------------------------------------------------------------------
+       Navbar mobile toggle
+    ------------------------------------------------------------------ */
+    (function () {
+      const toggler = document.getElementById('navbarToggler');
+      const nav     = document.getElementById('mainNav');
+      if (toggler && nav) {
+        toggler.addEventListener('click', function () {
+          const isOpen = nav.classList.toggle('open');
+          toggler.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+      }
+    })();
+
+    /* ------------------------------------------------------------------
+       Toast utility
+       Usage:  showToast('Attendance recorded!', 'success');
+               showToast('Face not recognized.', 'error');
+       Types:  'success' | 'error' | 'warning' | 'info'
+    ------------------------------------------------------------------ */
+    function showToast(message, type) {
+      type = type || 'success';
+      var container = document.getElementById('toast-container');
+      if (!container) return;
+
+      var toast = document.createElement('div');
+      toast.className = 'toast toast-' + type;
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      toast.textContent = message;
+      container.appendChild(toast);
+
+      // Trigger slide-in on next paint
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          toast.classList.add('show');
+        });
+      });
+
+      // Auto-dismiss after 3.5 s
+      setTimeout(function () {
+        toast.classList.remove('show');
+        setTimeout(function () {
+          if (toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+          }
+        }, 300); // matches CSS transition duration
+      }, 3500);
+    }
+
+    /* ------------------------------------------------------------------
+       Session timeout warning
+       Flask invalidates the session after 30 min of inactivity (server
+       side).  This client-side timer fires a visible warning at 25 min
+       so the user can act before the session is actually gone.
+    ------------------------------------------------------------------ */
+    {% if session.get('user_id') %}
+    (function () {
+      var WARNING_MS = 25 * 60 * 1000; // 25 minutes
+      setTimeout(function () {
+        showToast(
+          'Your session will expire in 5 minutes due to inactivity.',
+          'warning'
+        );
+      }, WARNING_MS);
+    })();
+    {% endif %}
+  </script>
+
+  {% block scripts %}{% endblock %}
+  <script>
+    // Init Lucide icons
+    if (typeof lucide !== "undefined") lucide.createIcons();
+  </script>
+</body>
+</html>
+

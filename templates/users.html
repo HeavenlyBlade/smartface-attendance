@@ -1,0 +1,679 @@
+{% extends "base.html" %}
+
+{% block title %}User Management{% endblock %}
+
+{% block head %}
+<style>
+  /* =========================================================
+     users.html — page-specific styles
+     All base palette vars come from style.css
+     ========================================================= */
+
+  /* ---- Summary bar ---- */
+  .users-summary {
+    display:     flex;
+    align-items: center;
+    gap:         0.5rem;
+    font-size:   0.9rem;
+    color:       var(--color-muted);
+    margin-bottom: 1rem;
+  }
+
+  .users-summary strong {
+    color: var(--color-dark);
+  }
+
+  /* ---- Actions column — keep buttons in a tight row ---- */
+  .actions-cell {
+    display:   flex;
+    flex-wrap: wrap;
+    gap:       0.4rem;
+    align-items: center;
+  }
+
+  /* ---- Active / Inactive badge (reusing status-badge from style.css) ---- */
+  .badge-active {
+    background-color: #d1f0e0;
+    color:            #1d5e3a;
+  }
+  .badge-inactive {
+    background-color: #f8d7da;
+    color:            #842029;
+  }
+
+  /* ---- Role badge ---- */
+  .role-badge {
+    display:       inline-block;
+    padding:       0.2em 0.65em;
+    font-size:     0.75rem;
+    font-weight:   600;
+    border-radius: 999px;
+    text-transform: capitalize;
+    letter-spacing: 0.04em;
+  }
+  .role-admin   { background: #e0d9f5; color: #3d1f8a; }
+  .role-faculty { background: #cce5ff; color: #004085; }
+  .role-student { background: #d1f0e0; color: #1d5e3a; }
+
+  /* ---- Modal backdrop & dialog ---- */
+  .modal-backdrop {
+    display:          none;
+    position:         fixed;
+    inset:            0;
+    background:       rgba(0, 0, 0, 0.45);
+    z-index:          1040;
+    align-items:      center;
+    justify-content:  center;
+  }
+  .modal-backdrop.open {
+    display: flex;
+  }
+
+  .modal-dialog {
+    background:    var(--color-white);
+    border-radius: var(--radius-lg);
+    box-shadow:    var(--shadow-lg);
+    width:         100%;
+    max-width:     500px;
+    padding:       2rem;
+    position:      relative;
+    animation:     modalIn 0.18s ease;
+  }
+
+  @keyframes modalIn {
+    from { opacity: 0; transform: translateY(-12px); }
+    to   { opacity: 1; transform: translateY(0);     }
+  }
+
+  .modal-title {
+    font-size:     1.15rem;
+    font-weight:   700;
+    margin-bottom: 1.25rem;
+    color:         var(--color-dark);
+  }
+
+  .modal-close {
+    position:   absolute;
+    top:        1rem;
+    right:      1rem;
+    background: none;
+    border:     none;
+    font-size:  1.4rem;
+    cursor:     pointer;
+    color:      var(--color-muted);
+    line-height: 1;
+    padding:    0.2rem 0.4rem;
+    border-radius: var(--radius-sm);
+    transition: background 0.15s;
+  }
+  .modal-close:hover { background: var(--color-bg); }
+
+  .modal-footer {
+    display:         flex;
+    justify-content: flex-end;
+    gap:             0.6rem;
+    margin-top:      1.5rem;
+  }
+
+  /* ---- Inline confirm mini-modal ---- */
+  .confirm-backdrop {
+    display:         none;
+    position:        fixed;
+    inset:           0;
+    background:      rgba(0, 0, 0, 0.45);
+    z-index:         1050;
+    align-items:     center;
+    justify-content: center;
+  }
+  .confirm-backdrop.open { display: flex; }
+
+  .confirm-dialog {
+    background:    var(--color-white);
+    border-radius: var(--radius-lg);
+    box-shadow:    var(--shadow-lg);
+    width:         100%;
+    max-width:     400px;
+    padding:       1.75rem 2rem;
+    text-align:    center;
+    animation:     modalIn 0.18s ease;
+  }
+
+  .confirm-icon {
+    font-size:     2.5rem;
+    margin-bottom: 0.75rem;
+    line-height:   1;
+  }
+
+  .confirm-title {
+    font-size:     1.1rem;
+    font-weight:   700;
+    margin-bottom: 0.5rem;
+    color:         var(--color-dark);
+  }
+
+  .confirm-body {
+    font-size:     0.9rem;
+    color:         var(--color-muted);
+    margin-bottom: 1.5rem;
+  }
+
+  .confirm-footer {
+    display:         flex;
+    justify-content: center;
+    gap:             0.75rem;
+  }
+
+  /* ---- Pagination ---- */
+  .pager {
+    display:     flex;
+    align-items: center;
+    gap:         0.25rem;
+    margin-top:  1.25rem;
+    flex-wrap:   wrap;
+  }
+
+  /* ---- Empty state ---- */
+  .empty-state {
+    text-align:  center;
+    padding:     3rem 1.5rem;
+    color:       var(--color-muted);
+  }
+  .empty-state-icon {
+    font-size:     3rem;
+    margin-bottom: 0.75rem;
+  }
+
+  /* ---- Responsive tweaks ---- */
+  @media (max-width: 768px) {
+    .table thead th.hide-mobile,
+    .table tbody td.hide-mobile {
+      display: none;
+    }
+    .modal-dialog { margin: 1rem; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+
+  <!-- =====================================================================
+       Page Header
+       ===================================================================== -->
+  <div class="page-header">
+    <h1 class="page-title">User Management</h1>
+    <p class="page-subtitle">
+      Manage all registered users — edit profiles, toggle access, and remove biometric data.
+    </p>
+  </div>
+
+  <!-- =====================================================================
+       User Table Card
+       ===================================================================== -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-header-title">
+        All Users
+        <span style="font-weight:400; color:var(--color-muted); font-size:0.85rem; margin-left:0.5rem;">
+          ({{ total }} total)
+        </span>
+      </span>
+
+      <!-- Optional: link to enrollment -->
+      <a href="{{ url_for('admin.enroll_page') }}" class="btn btn-primary btn-sm">
+        + Enroll New User
+      </a>
+    </div>
+
+    <div class="card-body" style="padding: 0;">
+
+      {% if users %}
+        <div class="table-wrapper" style="border: none; border-radius: 0;">
+          <table class="table" id="users-table">
+            <thead>
+              <tr>
+                <th>Full Name</th>
+                <th>ID Number</th>
+                <th class="hide-mobile">Role</th>
+                <th class="hide-mobile">Department</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for user in users %}
+              <tr>
+                <!-- Full Name -->
+                <td>
+                  <strong>{{ user.full_name }}</strong>
+                  <div style="font-size:0.78rem; color:var(--color-muted);">{{ user.email }}</div>
+                </td>
+
+                <!-- ID Number -->
+                <td>{{ user.id_number }}</td>
+
+                <!-- Role badge -->
+                <td class="hide-mobile">
+                  <span class="role-badge role-{{ user.role }}">{{ user.role | capitalize }}</span>
+                </td>
+
+                <!-- Department -->
+                <td class="hide-mobile" style="font-size:0.88rem;">
+                  {{ user.department or '—' }}
+                </td>
+
+                <!-- Active / Inactive badge -->
+                <td>
+                  {% if user.is_active %}
+                    <span class="status-badge badge-active">Active</span>
+                  {% else %}
+                    <span class="status-badge badge-inactive">Inactive</span>
+                  {% endif %}
+                </td>
+
+                <!-- Actions -->
+                <td>
+                  <div class="actions-cell">
+
+                    {# Edit button — opens the edit modal #}
+                    <button
+                      class="btn btn-outline-primary btn-sm"
+                      aria-label="Edit {{ user.full_name }}"
+                      onclick="openEditModal(
+                        {{ user.id }},
+                        {{ user.full_name | tojson }},
+                        {{ user.id_number | tojson }},
+                        {{ user.role | tojson }},
+                        {{ (user.department or '') | tojson }}
+                      )"
+                    >
+                      ✏ Edit
+                    </button>
+
+                    {# Deactivate / Reactivate — submits a POST form #}
+                    {% if user.id != session.user_id %}
+                      {% if user.is_active %}
+                        <button
+                          class="btn btn-outline-danger btn-sm"
+                          aria-label="Deactivate {{ user.full_name }}"
+                          onclick="confirmDeactivate(
+                            {{ user.id }},
+                            {{ user.full_name | tojson }},
+                            true
+                          )"
+                        >
+                          🔒 Deactivate
+                        </button>
+                      {% else %}
+                        <button
+                          class="btn btn-gold btn-sm"
+                          aria-label="Reactivate {{ user.full_name }}"
+                          onclick="confirmDeactivate(
+                            {{ user.id }},
+                            {{ user.full_name | tojson }},
+                            false
+                          )"
+                        >
+                          🔓 Reactivate
+                        </button>
+                      {% endif %}
+                    {% else %}
+                      {# Greyed-out — self-deactivation blocked #}
+                      <button class="btn btn-outline-danger btn-sm" disabled title="You cannot deactivate your own account.">
+                        🔒 Deactivate
+                      </button>
+                    {% endif %}
+
+                    {# Delete Biometrics #}
+                    <button
+                      class="btn btn-danger btn-sm"
+                      aria-label="Delete biometric data for {{ user.full_name }}"
+                      onclick="confirmDeleteBiometric(
+                        {{ user.id }},
+                        {{ user.full_name | tojson }}
+                      )"
+                    >
+                      🗑 Biometrics
+                    </button>
+
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ==============================================================
+             Pagination
+             ============================================================== -->
+        {% if pages > 1 %}
+        <div class="card-footer">
+          <nav class="pager" aria-label="User list pagination">
+
+            {# Previous #}
+            {% if current_page > 1 %}
+              <a class="btn btn-outline-primary btn-sm"
+                 href="{{ url_for('admin.users', page=current_page - 1) }}"
+                 aria-label="Previous page">
+                ← Prev
+              </a>
+            {% else %}
+              <button class="btn btn-outline-primary btn-sm" disabled>← Prev</button>
+            {% endif %}
+
+            {# Page numbers — show a sliding window of 5 #}
+            {% set win_start = [1, current_page - 2] | max %}
+            {% set win_end   = [pages, current_page + 2] | min %}
+
+            {% if win_start > 1 %}
+              <a class="btn btn-outline-primary btn-sm"
+                 href="{{ url_for('admin.users', page=1) }}">1</a>
+              {% if win_start > 2 %}
+                <span style="color:var(--color-muted); padding:0 0.25rem;">…</span>
+              {% endif %}
+            {% endif %}
+
+            {% for p in range(win_start, win_end + 1) %}
+              {% if p == current_page %}
+                <button class="btn btn-primary btn-sm" disabled aria-current="page">{{ p }}</button>
+              {% else %}
+                <a class="btn btn-outline-primary btn-sm"
+                   href="{{ url_for('admin.users', page=p) }}">{{ p }}</a>
+              {% endif %}
+            {% endfor %}
+
+            {% if win_end < pages %}
+              {% if win_end < pages - 1 %}
+                <span style="color:var(--color-muted); padding:0 0.25rem;">…</span>
+              {% endif %}
+              <a class="btn btn-outline-primary btn-sm"
+                 href="{{ url_for('admin.users', page=pages) }}">{{ pages }}</a>
+            {% endif %}
+
+            {# Next #}
+            {% if current_page < pages %}
+              <a class="btn btn-outline-primary btn-sm"
+                 href="{{ url_for('admin.users', page=current_page + 1) }}"
+                 aria-label="Next page">
+                Next →
+              </a>
+            {% else %}
+              <button class="btn btn-outline-primary btn-sm" disabled>Next →</button>
+            {% endif %}
+
+            <span style="font-size:0.82rem; color:var(--color-muted); margin-left:0.5rem;">
+              Page {{ current_page }} of {{ pages }}
+            </span>
+          </nav>
+        </div>
+        {% endif %}
+
+      {% else %}
+        <!-- Empty state -->
+        <div class="empty-state">
+          <div class="empty-state-icon">👤</div>
+          <p>No users found. <a href="{{ url_for('admin.enroll_page') }}">Enroll the first user.</a></p>
+        </div>
+      {% endif %}
+
+    </div>{# /card-body #}
+  </div>{# /card #}
+
+</div>{# /page-wrapper #}
+
+
+<!-- ===========================================================================
+     Edit User Modal
+     =========================================================================== -->
+<div class="modal-backdrop" id="editModalBackdrop" role="dialog" aria-modal="true"
+     aria-labelledby="editModalTitle">
+  <div class="modal-dialog">
+    <button class="modal-close" onclick="closeEditModal()" aria-label="Close">×</button>
+    <h2 class="modal-title" id="editModalTitle">Edit User Profile</h2>
+
+    <form id="editForm" method="POST" action="" novalidate>
+
+      <div class="form-group">
+        <label class="form-label" for="edit-full-name">
+          Full Name <span class="required">*</span>
+        </label>
+        <input
+          type="text"
+          id="edit-full-name"
+          name="full_name"
+          class="form-control"
+          maxlength="100"
+          required
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="edit-id-number">
+          ID Number <span class="required">*</span>
+        </label>
+        <input
+          type="text"
+          id="edit-id-number"
+          name="id_number"
+          class="form-control"
+          maxlength="50"
+          required
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="edit-role">
+          Role <span class="required">*</span>
+        </label>
+        <select id="edit-role" name="role" class="form-control" required>
+          <option value="admin">Admin</option>
+          <option value="faculty">Faculty / Staff</option>
+          <option value="student">Student</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="edit-department">Department</label>
+        <input
+          type="text"
+          id="edit-department"
+          name="department"
+          class="form-control"
+          maxlength="100"
+          autocomplete="off"
+        />
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-primary" onclick="closeEditModal()">
+          Cancel
+        </button>
+        <button type="submit" class="btn btn-primary">
+          Save Changes
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+
+<!-- ===========================================================================
+     Deactivate / Reactivate Confirmation Modal
+     =========================================================================== -->
+<div class="confirm-backdrop" id="deactivateBackdrop" role="dialog" aria-modal="true"
+     aria-labelledby="deactivateTitle">
+  <div class="confirm-dialog">
+    <div class="confirm-icon" id="deactivateIcon">🔒</div>
+    <h2 class="confirm-title" id="deactivateTitle">Deactivate User?</h2>
+    <p class="confirm-body" id="deactivateBody">
+      This will prevent the user from logging in.
+    </p>
+    <div class="confirm-footer">
+      <button class="btn btn-outline-primary" onclick="closeDeactivate()">Cancel</button>
+      <form id="deactivateForm" method="POST" action="" style="display:inline;">
+        <button type="submit" class="btn btn-danger" id="deactivateSubmitBtn">
+          Deactivate
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===========================================================================
+     Delete Biometrics Confirmation Modal
+     =========================================================================== -->
+<div class="confirm-backdrop" id="biometricBackdrop" role="dialog" aria-modal="true"
+     aria-labelledby="biometricTitle">
+  <div class="confirm-dialog">
+    <div class="confirm-icon">⚠️</div>
+    <h2 class="confirm-title" id="biometricTitle">Delete Biometric Data?</h2>
+    <p class="confirm-body" id="biometricBody">
+      All face encodings and sample images will be permanently removed.
+      This action cannot be undone.
+    </p>
+    <div class="confirm-footer">
+      <button class="btn btn-outline-primary" onclick="closeBiometric()">Cancel</button>
+      <form id="biometricForm" method="POST" action="" style="display:inline;">
+        <button type="submit" class="btn btn-danger">Delete Biometrics</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+/* ============================================================================
+   users.html — modal & confirm dialog logic
+   No external library; all vanilla JS.
+   ============================================================================ */
+
+/* ---------------------------------------------------------------------------
+   Edit Modal
+   --------------------------------------------------------------------------- */
+function openEditModal(userId, fullName, idNumber, role, department) {
+  var form     = document.getElementById('editForm');
+  var backdrop = document.getElementById('editModalBackdrop');
+
+  // Point the form action to the correct user
+  form.action = '/users/' + userId + '/edit';
+
+  // Pre-fill fields
+  document.getElementById('edit-full-name').value  = fullName   || '';
+  document.getElementById('edit-id-number').value  = idNumber   || '';
+  document.getElementById('edit-department').value = department || '';
+
+  var roleSelect = document.getElementById('edit-role');
+  for (var i = 0; i < roleSelect.options.length; i++) {
+    roleSelect.options[i].selected = (roleSelect.options[i].value === role);
+  }
+
+  backdrop.classList.add('open');
+  document.getElementById('edit-full-name').focus();
+}
+
+function closeEditModal() {
+  document.getElementById('editModalBackdrop').classList.remove('open');
+}
+
+// Close on backdrop click
+document.getElementById('editModalBackdrop').addEventListener('click', function(e) {
+  if (e.target === this) { closeEditModal(); }
+});
+
+// Client-side validation before submit
+document.getElementById('editForm').addEventListener('submit', function(e) {
+  var fullName = document.getElementById('edit-full-name').value.trim();
+  var idNumber = document.getElementById('edit-id-number').value.trim();
+  if (!fullName || !idNumber) {
+    e.preventDefault();
+    alert('Full Name and ID Number are required.');
+  }
+});
+
+
+/* ---------------------------------------------------------------------------
+   Deactivate / Reactivate Confirm
+   --------------------------------------------------------------------------- */
+function confirmDeactivate(userId, fullName, isCurrentlyActive) {
+  var backdrop   = document.getElementById('deactivateBackdrop');
+  var form       = document.getElementById('deactivateForm');
+  var icon       = document.getElementById('deactivateIcon');
+  var title      = document.getElementById('deactivateTitle');
+  var body       = document.getElementById('deactivateBody');
+  var submitBtn  = document.getElementById('deactivateSubmitBtn');
+
+  form.action = '/users/' + userId + '/deactivate';
+
+  if (isCurrentlyActive) {
+    icon.textContent      = '🔒';
+    title.textContent     = 'Deactivate ' + fullName + '?';
+    body.textContent      = fullName + ' will no longer be able to log in. You can reactivate them later.';
+    submitBtn.textContent = 'Deactivate';
+    submitBtn.className   = 'btn btn-danger';
+  } else {
+    icon.textContent      = '🔓';
+    title.textContent     = 'Reactivate ' + fullName + '?';
+    body.textContent      = fullName + ' will regain the ability to log in.';
+    submitBtn.textContent = 'Reactivate';
+    submitBtn.className   = 'btn btn-primary';
+  }
+
+  backdrop.classList.add('open');
+}
+
+function closeDeactivate() {
+  document.getElementById('deactivateBackdrop').classList.remove('open');
+}
+
+document.getElementById('deactivateBackdrop').addEventListener('click', function(e) {
+  if (e.target === this) { closeDeactivate(); }
+});
+
+
+/* ---------------------------------------------------------------------------
+   Delete Biometrics Confirm
+   --------------------------------------------------------------------------- */
+function confirmDeleteBiometric(userId, fullName) {
+  var backdrop = document.getElementById('biometricBackdrop');
+  var form     = document.getElementById('biometricForm');
+  var title    = document.getElementById('biometricTitle');
+  var body     = document.getElementById('biometricBody');
+
+  form.action    = '/users/' + userId + '/delete-biometric';
+  title.textContent = 'Delete Biometrics for ' + fullName + '?';
+  body.textContent  =
+    'All face encodings and sample images for ' + fullName +
+    ' will be permanently removed. They will need to be re-enrolled before they can be recognized.';
+
+  backdrop.classList.add('open');
+}
+
+function closeBiometric() {
+  document.getElementById('biometricBackdrop').classList.remove('open');
+}
+
+document.getElementById('biometricBackdrop').addEventListener('click', function(e) {
+  if (e.target === this) { closeBiometric(); }
+});
+
+
+/* ---------------------------------------------------------------------------
+   ESC key closes any open modal / confirm
+   --------------------------------------------------------------------------- */
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closeEditModal();
+    closeDeactivate();
+    closeBiometric();
+  }
+});
+</script>
+{% endblock %}

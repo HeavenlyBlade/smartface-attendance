@@ -1,0 +1,160 @@
+﻿{% extends "base.html" %}
+{% block title %}Attendance Reports{% endblock %}
+{% block head %}
+<style>
+  .filter-form { background: var(--color-white); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; }
+  .filter-row  { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+  .filter-group { display: flex; flex-direction: column; gap: 0.3rem; min-width: 150px; }
+  .filter-group label { font-size: 0.8rem; font-weight: 600; color: var(--color-muted); text-transform: uppercase; }
+  .date-error { color: #842029; font-size: 0.85rem; margin-top: 0.4rem; display: none; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-wrapper">
+  <div class="page-header">
+    <h1 class="page-title">Attendance Reports</h1>
+    <p class="page-subtitle">Filter by date range, role, or department and export to CSV.</p>
+  </div>
+
+  <!-- Filter Form -->
+  <div class="filter-form">
+    <form id="reports-form" method="GET" action="{{ url_for('attendance.reports') }}" novalidate>
+      <div class="filter-row">
+        <div class="filter-group">
+          <label for="f-start">Start Date</label>
+          <input id="f-start" name="start_date" type="date" class="form-control" value="{{ start_date }}" />
+        </div>
+        <div class="filter-group">
+          <label for="f-end">End Date</label>
+          <input id="f-end" name="end_date" type="date" class="form-control" value="{{ end_date }}" />
+        </div>
+        <div class="filter-group">
+          <label for="f-role">Role</label>
+          <select id="f-role" name="role" class="form-control">
+            <option value="">All Roles</option>
+            <option value="admin"   {% if role=='admin'   %}selected{% endif %}>Admin</option>
+            <option value="faculty" {% if role=='faculty' %}selected{% endif %}>Faculty</option>
+            <option value="student" {% if role=='student' %}selected{% endif %}>Student</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="f-dept">Department</label>
+          <input id="f-dept" name="department" type="text" class="form-control"
+                 maxlength="100" placeholder="Any department" value="{{ department }}" />
+        </div>
+        <div class="filter-group" style="flex-direction:row;gap:0.5rem;align-items:flex-end;">
+          <button type="submit" class="btn btn-primary">Filter</button>
+          <a href="{{ url_for('attendance.reports') }}" class="btn btn-outline-primary">Clear</a>
+          {% if records %}
+          <a href="{{ url_for('attendance.reports_export', start_date=start_date, end_date=end_date, role=role, department=department) }}"
+             class="btn btn-gold">Export CSV</a>
+          {% endif %}
+        </div>
+      </div>
+      <div class="date-error" id="date-error">Start date cannot be after end date.</div>
+    </form>
+  </div>
+
+  {% if filter_error %}
+  <div class="alert alert-danger" role="alert">{{ filter_error }}</div>
+  {% endif %}
+
+  <!-- Results -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-header-title">Results
+        <span style="font-weight:400;color:var(--color-muted);font-size:0.85rem;margin-left:0.5rem;">({{ total }} total)</span>
+      </span>
+    </div>
+    <div class="card-body" style="padding:0;">
+      {% if records %}
+      <div class="table-wrapper" style="border:none;border-radius:0;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th><th>ID Number</th><th>Department</th><th>Role</th>
+              <th>Date</th><th>Time In</th><th>Time Out</th><th>Status</th><th>Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in records %}
+            <tr>
+              <td>{{ r.full_name }}</td>
+              <td>{{ r.id_number }}</td>
+              <td>{{ r.department or '—' }}</td>
+              <td><span class="role-badge role-{{ r.role }}">{{ r.role|capitalize }}</span></td>
+              <td>{{ r.date }}</td>
+              <td>{{ r.time_in  or '—' }}</td>
+              <td>{{ r.time_out or '—' }}</td>
+              <td>
+                {% if r.status == 'present' %}<span class="status-badge status-present">Present</span>
+                {% elif r.status == 'late' %}<span class="status-badge status-late">Late</span>
+                {% elif r.status == 'absent' %}<span class="status-badge">Absent</span>
+                {% elif r.status == 'manual' %}<span class="status-badge status-manual">Manual</span>
+                {% else %}<span class="status-badge">{{ r.status or '—' }}</span>{% endif %}
+              </td>
+              <td>{{ '%.1f%%'|format(r.confidence) if r.confidence else '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      {% if pages > 1 %}
+      <div class="card-footer">
+        <nav class="pager" aria-label="Reports pagination">
+          {% if current_page > 1 %}
+          <a class="btn btn-outline-primary btn-sm"
+             href="{{ url_for('attendance.reports', page=current_page-1, start_date=start_date, end_date=end_date, role=role, department=department) }}">← Prev</a>
+          {% else %}<button class="btn btn-outline-primary btn-sm" disabled>← Prev</button>{% endif %}
+
+          {% set ws = [1, current_page-2]|max %}
+          {% set we = [pages, current_page+2]|min %}
+          {% for p in range(ws, we+1) %}
+            {% if p == current_page %}
+            <button class="btn btn-primary btn-sm" disabled>{{ p }}</button>
+            {% else %}
+            <a class="btn btn-outline-primary btn-sm"
+               href="{{ url_for('attendance.reports', page=p, start_date=start_date, end_date=end_date, role=role, department=department) }}">{{ p }}</a>
+            {% endif %}
+          {% endfor %}
+
+          {% if current_page < pages %}
+          <a class="btn btn-outline-primary btn-sm"
+             href="{{ url_for('attendance.reports', page=current_page+1, start_date=start_date, end_date=end_date, role=role, department=department) }}">Next →</a>
+          {% else %}<button class="btn btn-outline-primary btn-sm" disabled>Next →</button>{% endif %}
+          <span style="font-size:0.82rem;color:var(--color-muted);margin-left:0.5rem;">Page {{ current_page }} of {{ pages }}</span>
+        </nav>
+      </div>
+      {% endif %}
+
+      {% else %}
+      <div style="text-align:center;padding:3rem;color:var(--color-muted);">
+        <div style="font-size:2.5rem;">📋</div>
+        <p>No records found for the selected filters.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  var form  = document.getElementById('reports-form');
+  var start = document.getElementById('f-start');
+  var end   = document.getElementById('f-end');
+  var err   = document.getElementById('date-error');
+  form.addEventListener('submit', function(e) {
+    if (start.value && end.value && start.value > end.value) {
+      e.preventDefault();
+      err.style.display = 'block';
+      start.focus();
+    } else {
+      err.style.display = 'none';
+    }
+  });
+})();
+</script>
+{% endblock %}

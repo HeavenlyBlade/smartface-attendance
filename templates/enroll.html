@@ -1,0 +1,634 @@
+{% extends "base.html" %}
+
+{% block title %}Enroll New User{% endblock %}
+
+{% block head %}
+<style>
+  /* -----------------------------------------------------------------------
+     Enrollment-page layout additions
+     (base SACLI palette variables are already defined in style.css)
+  ----------------------------------------------------------------------- */
+
+  /* Two-column split: form left, webcam right */
+  .enroll-layout {
+    display:  grid;
+    grid-template-columns: 1fr 1fr;
+    gap:      2rem;
+    align-items: flex-start;
+  }
+
+  /* ---- Webcam panel ---- */
+  .webcam-panel {
+    position: sticky;
+    top:      80px;         /* sits just below the fixed navbar */
+  }
+
+  .webcam-video-wrapper {
+    position:         relative;
+    background-color: #111;
+    border-radius:    var(--radius-md);
+    overflow:         hidden;
+    min-height:       240px;
+    display:          flex;
+    align-items:      center;
+    justify-content:  center;
+  }
+
+  #webcam-video {
+    width:         100%;
+    min-width:     320px;
+    min-height:    240px;
+    border-radius: var(--radius-md);
+    object-fit:    cover;
+    display:       block;
+  }
+
+  /* Overlay text shown while camera is initialising */
+  #webcam-initialising {
+    position:  absolute;
+    color:     rgba(255,255,255,0.7);
+    font-size: 0.9rem;
+    text-align: center;
+    padding:   1rem;
+    pointer-events: none;
+  }
+
+  /* Camera error panel (shown by JS; hidden by default) */
+  #camera-error-panel {
+    display:          none;
+    background-color: #fff3cd;
+    border:           1px solid #ffe08a;
+    border-radius:    var(--radius-md);
+    color:            #664d03;
+    padding:          1.5rem;
+    text-align:       center;
+    margin-top:       1rem;
+  }
+
+  #camera-error-panel .error-icon {
+    font-size:   2.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  #camera-error-panel h3 {
+    font-size:     1.05rem;
+    font-weight:   700;
+    margin-bottom: 0.5rem;
+    color:         #664d03;
+  }
+
+  #camera-error-panel p {
+    font-size:  0.875rem;
+    margin-bottom: 0.75rem;
+    line-height: 1.6;
+  }
+
+  #camera-error-panel ul {
+    list-style: disc;
+    text-align: left;
+    padding-left: 1.5rem;
+    font-size: 0.875rem;
+    line-height: 1.8;
+  }
+
+  /* Capture controls row */
+  .webcam-controls {
+    display:     flex;
+    gap:         0.75rem;
+    align-items: center;
+    margin-top:  1rem;
+  }
+
+  /* Sample counter badge */
+  #sample-counter {
+    font-size:   0.875rem;
+    font-weight: 600;
+    color:       var(--color-muted);
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  #sample-counter.ready {
+    color: var(--color-primary);
+  }
+
+  /* ---- Thumbnail strip ---- */
+  #thumbnail-strip {
+    display:   flex;
+    gap:       0.5rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+    min-height: 68px;       /* reserves space even when empty */
+  }
+
+  .thumb-wrapper {
+    position:      relative;
+    width:         80px;
+    height:        60px;
+    border-radius: var(--radius-sm);
+    border:        2px solid var(--color-primary);
+    overflow:      hidden;
+    background:    #eee;
+    flex-shrink:   0;
+  }
+
+  .thumb-wrapper img {
+    width:      100%;
+    height:     100%;
+    object-fit: cover;
+    display:    block;
+  }
+
+  /* Small numbered badge in the corner of each thumbnail */
+  .thumb-badge {
+    position:         absolute;
+    top:              2px;
+    left:             3px;
+    background-color: rgba(0,0,0,0.55);
+    color:            #fff;
+    font-size:        0.68rem;
+    font-weight:      700;
+    padding:          1px 4px;
+    border-radius:    2px;
+    line-height:      1.4;
+    pointer-events:   none;
+  }
+
+  /* Remove-sample button on each thumbnail */
+  .thumb-remove {
+    position:         absolute;
+    top:              2px;
+    right:            3px;
+    background-color: var(--color-danger);
+    color:            #fff;
+    border:           none;
+    border-radius:    50%;
+    width:            16px;
+    height:           16px;
+    font-size:        0.65rem;
+    cursor:           pointer;
+    display:          flex;
+    align-items:      center;
+    justify-content:  center;
+    line-height:      1;
+    padding:          0;
+  }
+
+  /* Thumbnail placeholder dots while no samples captured */
+  .thumb-placeholder {
+    width:         80px;
+    height:        60px;
+    border:        2px dashed var(--color-border);
+    border-radius: var(--radius-sm);
+    display:       flex;
+    align-items:   center;
+    justify-content: center;
+    color:         var(--color-muted);
+    font-size:     1.5rem;
+    flex-shrink:   0;
+  }
+
+  /* ---- Form panel ---- */
+  .enroll-form-card {
+    background:    var(--color-white);
+    border:        1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow:    var(--shadow-sm);
+    overflow:      hidden;
+  }
+
+  .enroll-form-header {
+    background:   var(--color-primary);
+    color:        var(--color-white);
+    padding:      1rem 1.5rem;
+    display:      flex;
+    align-items:  center;
+    gap:          0.75rem;
+  }
+
+  .enroll-form-header h2 {
+    font-size:   1.1rem;
+    font-weight: 700;
+    margin:      0;
+    color:       var(--color-white);
+  }
+
+  .enroll-form-header .header-icon {
+    font-size:   1.4rem;
+    line-height: 1;
+  }
+
+  .enroll-form-body {
+    padding: 1.5rem;
+  }
+
+  /* Consent box */
+  .consent-box {
+    background-color: #fffbeb;
+    border:           1px solid #ffe08a;
+    border-radius:    var(--radius-md);
+    padding:          1rem 1.25rem;
+    margin-bottom:    1.25rem;
+  }
+
+  .consent-box .consent-title {
+    font-size:     0.8rem;
+    font-weight:   700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color:         var(--color-gold-dark, #b8961f);
+    margin-bottom: 0.5rem;
+  }
+
+  .consent-box .form-check-label {
+    font-size:   0.875rem;
+    line-height: 1.6;
+  }
+
+  .consent-box a {
+    color:       var(--color-gold-dark, #b8961f);
+    font-weight: 600;
+  }
+
+  .consent-box a:hover {
+    text-decoration: underline;
+  }
+
+  /* Requirement hint below submit button */
+  .submit-hint {
+    font-size:  0.8rem;
+    color:      var(--color-muted);
+    margin-top: 0.5rem;
+    text-align: center;
+  }
+
+  .submit-hint .requirement {
+    display:     inline-block;
+    margin:      0 0.4rem;
+    padding:     0.15em 0.55em;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size:   0.75rem;
+  }
+
+  .requirement-ok {
+    background-color: #d1f0e0;
+    color:            #1d5e3a;
+  }
+
+  .requirement-pending {
+    background-color: #f8d7da;
+    color:            #842029;
+  }
+
+  /* Hidden captured data store (read by enroll.js) */
+  #captured-data {
+    display: none;
+  }
+
+  /* ---- Responsive: stack on smaller screens ---- */
+  @media (max-width: 960px) {
+    .enroll-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .webcam-panel {
+      position: static;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+
+  <!-- Page header -->
+  <div class="page-header">
+    <h1 class="page-title">Enroll New User</h1>
+    <p class="page-subtitle">
+      Capture 3–5 face samples and complete the form to register a new user.
+      Biometric data is collected under
+      <strong>Republic Act 10173 (Data Privacy Act of the Philippines)</strong>.
+    </p>
+  </div>
+
+  <!-- Main two-column layout -->
+  <div class="enroll-layout">
+
+    <!-- ================================================================
+         LEFT COLUMN — Registration form
+    ================================================================ -->
+    <div class="enroll-form-card">
+
+      <div class="enroll-form-header">
+        <span class="header-icon" aria-hidden="true">👤</span>
+        <h2>User Information</h2>
+      </div>
+
+      <div class="enroll-form-body">
+        <!--
+          The form targets POST /api/enroll (JSON submission handled by
+          enroll.js, Task 2.5). The action/method here are fallback values
+          only; JavaScript intercepts and serialises as multipart or JSON.
+        -->
+        <form id="enroll-form" novalidate aria-label="User enrollment form">
+
+          <!-- Full Name -->
+          <div class="form-group">
+            <label class="form-label" for="full-name">
+              Full Name <span class="required" aria-hidden="true">*</span>
+            </label>
+            <input
+              id="full-name"
+              name="full_name"
+              type="text"
+              class="form-control"
+              placeholder="e.g. Maria Santos"
+              minlength="1"
+              maxlength="100"
+              required
+              autocomplete="name"
+              aria-required="true"
+              aria-describedby="full-name-hint"
+            />
+            <span id="full-name-hint" class="form-hint">1–100 characters.</span>
+            <div class="invalid-feedback" id="full-name-error" role="alert"></div>
+          </div>
+
+          <!-- Email -->
+          <div class="form-group">
+            <label class="form-label" for="email">
+              Email Address <span class="required" aria-hidden="true">*</span>
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              class="form-control"
+              placeholder="e.g. m.santos@sacli.edu.ph"
+              maxlength="254"
+              required
+              autocomplete="email"
+              aria-required="true"
+              aria-describedby="email-hint"
+            />
+            <span id="email-hint" class="form-hint">Valid email format, max 254 characters.</span>
+            <div class="invalid-feedback" id="email-error" role="alert"></div>
+          </div>
+
+          <!-- ID Number -->
+          <div class="form-group">
+            <label class="form-label" for="id-number">
+              ID Number <span class="required" aria-hidden="true">*</span>
+            </label>
+            <input
+              id="id-number"
+              name="id_number"
+              type="text"
+              class="form-control"
+              placeholder="e.g. 2024-00123"
+              minlength="1"
+              maxlength="50"
+              required
+              aria-required="true"
+              aria-describedby="id-number-hint"
+            />
+            <span id="id-number-hint" class="form-hint">1–50 characters.</span>
+            <div class="invalid-feedback" id="id-number-error" role="alert"></div>
+          </div>
+
+          <!-- Department -->
+          <div class="form-group">
+            <label class="form-label" for="department">
+              Department <span class="required" aria-hidden="true">*</span>
+            </label>
+            <input
+              id="department"
+              name="department"
+              type="text"
+              class="form-control"
+              placeholder="e.g. College of Engineering"
+              minlength="1"
+              maxlength="100"
+              required
+              aria-required="true"
+              aria-describedby="department-hint"
+            />
+            <span id="department-hint" class="form-hint">1–100 characters.</span>
+            <div class="invalid-feedback" id="department-error" role="alert"></div>
+          </div>
+
+          <!-- Role -->
+          <div class="form-group">
+            <label class="form-label" for="role">
+              Role <span class="required" aria-hidden="true">*</span>
+            </label>
+            <select
+              id="role"
+              name="role"
+              class="form-control"
+              required
+              aria-required="true"
+            >
+              <option value="" disabled selected>Select a role…</option>
+              <option value="student">Student</option>
+              <option value="faculty">Faculty / Staff</option>
+              <option value="admin">Admin</option>
+            </select>
+            <div class="invalid-feedback" id="role-error" role="alert"></div>
+          </div>
+
+          <!-- RA 10173 Consent -->
+          <div class="consent-box">
+            <p class="consent-title">&#9654; Biometric Data Consent — RA 10173</p>
+            <div class="form-check">
+              <input
+                id="consent-checkbox"
+                name="consent_given"
+                type="checkbox"
+                class="form-check-input"
+                aria-required="true"
+                aria-describedby="consent-desc"
+              />
+              <label class="form-check-label" for="consent-checkbox" id="consent-desc">
+                I confirm that the individual named above has given their
+                <strong>informed consent</strong> for their biometric facial data
+                to be collected, processed, and stored by St. Anne College Lucena,
+                Inc. (SACLI) for attendance monitoring purposes, in accordance with
+                <a
+                  href="https://www.privacy.gov.ph/data-privacy-act/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >Republic Act 10173 — Data Privacy Act of the Philippines</a>.
+                They understand they may withdraw consent at any time by requesting
+                deletion of their biometric data from an Administrator.
+              </label>
+            </div>
+          </div>
+
+          <!-- Submission requirements status -->
+          <div class="submit-hint" id="submit-hint" aria-live="polite">
+            Required before submitting:
+            <span id="req-consent"  class="requirement requirement-pending">Consent ✗</span>
+            <span id="req-samples"  class="requirement requirement-pending">0 / 3 samples ✗</span>
+          </div>
+
+          <!-- Submit -->
+          <div class="form-group mt-2">
+            <button
+              type="submit"
+              id="submit-btn"
+              class="btn btn-primary btn-block btn-lg"
+              disabled
+              aria-disabled="true"
+              aria-describedby="submit-hint"
+            >
+              &#10003;&nbsp; Enroll User
+            </button>
+          </div>
+
+        </form>{# /enroll-form #}
+      </div>{# /enroll-form-body #}
+    </div>{# /enroll-form-card #}
+
+    <!-- ================================================================
+         RIGHT COLUMN — Webcam preview + capture controls
+    ================================================================ -->
+    <div class="webcam-panel">
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-header-title">&#128247;&nbsp; Webcam Preview</span>
+          <span id="sample-counter" aria-live="polite">0 / 5 samples</span>
+        </div>
+
+        <div class="card-body">
+
+          <!-- Live video element — populated by enroll.js -->
+          <div class="webcam-video-wrapper">
+            <video
+              id="webcam-video"
+              autoplay
+              muted
+              playsinline
+              aria-label="Live webcam preview"
+              width="640"
+              height="480"
+            ></video>
+            <span id="webcam-initialising" aria-live="polite">
+              Requesting camera access…
+            </span>
+          </div>
+
+          <!-- Camera error panel — displayed by JS if getUserMedia fails -->
+          <div id="camera-error-panel" role="alert" aria-live="assertive">
+            <div class="error-icon" aria-hidden="true">&#128247;</div>
+            <h3>Camera Access Unavailable</h3>
+            <p>
+              SmartFace could not access your webcam. Face sample capture is
+              disabled until camera access is restored.
+            </p>
+            <ul>
+              <li>Check that a camera is physically connected.</li>
+              <li>
+                Allow camera access in your browser's permission pop-up or
+                site settings (click the camera icon in the address bar).
+              </li>
+              <li>
+                Make sure no other application (e.g. video call software) is
+                currently using the camera.
+              </li>
+              <li>
+                If accessing over a network, the page must be served over
+                <strong>HTTPS</strong> or <strong>localhost</strong>.
+              </li>
+            </ul>
+            <button
+              id="retry-camera-btn"
+              type="button"
+              class="btn btn-outline-primary mt-2"
+              aria-label="Retry camera access"
+            >
+              &#8635;&nbsp; Retry Camera
+            </button>
+          </div>
+
+          <!-- Capture controls -->
+          <div class="webcam-controls">
+            <button
+              id="capture-btn"
+              type="button"
+              class="btn btn-gold"
+              disabled
+              aria-disabled="true"
+              aria-label="Capture face sample"
+            >
+              &#128247;&nbsp; Capture Sample
+            </button>
+
+            <button
+              id="clear-samples-btn"
+              type="button"
+              class="btn btn-outline-danger btn-sm"
+              aria-label="Clear all captured samples"
+              style="display: none;"
+            >
+              &#10006;&nbsp; Clear All
+            </button>
+          </div>
+
+          <p class="form-hint mt-1">
+            Capture between <strong>3</strong> and <strong>5</strong> samples.
+            Move your head slightly between captures for best recognition accuracy.
+          </p>
+
+          <!-- Thumbnail strip — populated dynamically by enroll.js -->
+          <div
+            id="thumbnail-strip"
+            role="list"
+            aria-label="Captured face samples"
+          >
+            <!--
+              Placeholder slots (shown when no samples captured yet).
+              enroll.js will replace these with real thumbnails.
+            -->
+            <div class="thumb-placeholder" aria-hidden="true" id="ph-1">+</div>
+            <div class="thumb-placeholder" aria-hidden="true" id="ph-2">+</div>
+            <div class="thumb-placeholder" aria-hidden="true" id="ph-3">+</div>
+          </div>
+
+          <!--
+            Hidden data store: enroll.js serialises each captured JPEG
+            (base64) into a <input type="hidden"> appended here so the
+            form submission handler can read all samples from one place.
+          -->
+          <div id="captured-data" aria-hidden="true"></div>
+
+        </div>{# /card-body #}
+      </div>{# /card #}
+    </div>{# /webcam-panel #}
+
+  </div>{# /enroll-layout #}
+</div>{# /page-wrapper #}
+{% endblock %}
+
+{% block scripts %}
+<!--
+  enroll.js — webcam stream, frame capture, thumbnail injection, form
+  submission handler.  Implemented in Task 2.5.
+-->
+<script src="{{ url_for('static', filename='js/enroll.js') }}"></script>
+
+<script>
+  /*
+    Inline bootstrap: expose server-side config values to enroll.js as
+    global constants so the JS file itself stays config-free.
+  */
+  window.ENROLL_CONFIG = {
+    minSamples: 3,
+    maxSamples: 5,
+    captureQuality: 0.85,     // JPEG quality for face samples
+    apiUrl: '/api/enroll'
+  };
+</script>
+{% endblock %}
