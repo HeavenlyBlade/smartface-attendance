@@ -1,0 +1,20 @@
+﻿services:
+  - type: web
+    name: smartface
+    runtime: python
+    buildCommand: pip install cmake && pip install dlib && pip install -r requirements.txt
+    startCommand: python serve.py
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: TOLERANCE
+        value: 0.45
+      - key: LATE_TIME
+        value: "08:00:00"
+      - key: BRIGHTNESS_THRESHOLD
+        value: 50
+      - key: UPLOAD_DIR
+        value: uploads/face_samples
+      # These must be set manually in the Render dashboard (sensitive):
+      # SECRET_KEY, DB_HOST, DB_PORT, DB_USER, DB_PASS, DB_NAME
