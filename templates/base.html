@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -137,11 +137,13 @@
       {# Logout — shown to any authenticated user #}
       {% if session.get('user_id') %}
         <li class="page-item">
-          <a class="nav-link nav-link-logout"
-             href="{{ url_for('auth.logout') }}"
-             aria-label="Log out of SmartFace">
+          <button class="nav-link nav-link-logout"
+                  id="logout-btn"
+                  type="button"
+                  onclick="document.getElementById('logout-modal').classList.add('open')"
+                  aria-label="Log out of SmartFace">
             Logout
-          </a>
+          </button>
         </li>
       {% endif %}
 
@@ -283,6 +285,47 @@
     // Init Lucide icons
     if (typeof lucide !== "undefined") lucide.createIcons();
   </script>
+<!-- =========================================================
+     Logout Confirmation Modal
+     ========================================================= -->
+<div id="logout-modal" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:18px;box-shadow:0 20px 48px rgba(0,0,0,0.18);width:100%;max-width:380px;padding:2rem;text-align:center;animation:modalIn 0.18s ease;">
+    <div style="font-size:2.5rem;margin-bottom:0.75rem;">👋</div>
+    <h2 id="logout-modal-title" style="font-size:1.15rem;font-weight:700;margin-bottom:0.5rem;color:#1A1A1A;">Sign out?</h2>
+    <p style="font-size:0.875rem;color:#64748b;margin-bottom:1.5rem;">You will be returned to the login page.</p>
+    <div style="display:flex;gap:0.75rem;justify-content:center;">
+      <button type="button"
+              onclick="document.getElementById('logout-modal').classList.remove('open');document.getElementById('logout-modal').style.display='none';"
+              style="padding:0.55rem 1.25rem;border:1.5px solid #e2e8f0;border-radius:6px;background:#fff;font-weight:600;font-size:0.875rem;cursor:pointer;color:#374151;">
+        Cancel
+      </button>
+      <a href="{{ url_for('auth.logout') }}"
+         style="padding:0.55rem 1.5rem;border-radius:6px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;font-weight:600;font-size:0.875rem;text-decoration:none;display:inline-flex;align-items:center;gap:0.4rem;">
+        Yes, sign out
+      </a>
+    </div>
+  </div>
+</div>
+<script>
+  // Show modal
+  var _lm = document.getElementById('logout-modal');
+  var _lb = document.getElementById('logout-btn');
+  if (_lb && _lm) {
+    _lm.style.display = 'none';
+    _lb.addEventListener('click', function() {
+      _lm.style.display = 'flex';
+    });
+    // Close on backdrop click
+    _lm.addEventListener('click', function(e) {
+      if (e.target === _lm) { _lm.style.display = 'none'; }
+    });
+    // Close on ESC
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') { _lm.style.display = 'none'; }
+    });
+  }
+</script>
 </body>
 </html>
 
