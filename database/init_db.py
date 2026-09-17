@@ -2,6 +2,7 @@ import logging
 import importlib.util
 import os
 import pathlib
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,9 @@ def init_db() -> None:
             return
         print("[init_db] First boot - creating tables...", flush=True)
         _run_schema()
-        print("[init_db] Tables created - seeding data...", flush=True)
+        print("[init_db] Waiting for tables to be fully visible...", flush=True)
+        time.sleep(2)
+        print("[init_db] Seeding data...", flush=True)
         _run_seed()
         print("[init_db] Done - database ready.", flush=True)
     except Exception as exc:
@@ -37,14 +40,16 @@ def _run_schema() -> None:
     sql = schema.read_text(encoding="utf-8")
     from models.db import get_connection
     conn = get_connection()
-    conn.autocommit = True
+    conn.autocommit = False
     cur = conn.cursor()
     for stmt in sql.split(";"):
         s = stmt.strip()
         if s and not s.startswith("--"):
             cur.execute(s)
+    conn.commit()
     cur.close()
     conn.close()
+    print("[init_db] Schema committed.", flush=True)
 
 
 def _run_seed() -> None:
