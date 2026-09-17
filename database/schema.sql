@@ -1,6 +1,5 @@
 -- SmartFace Attendance System -- Database Schema
--- Compatible with managed MySQL (Aiven, PlanetScale, etc.)
--- No CREATE DATABASE or USE statements needed.
+-- No FOREIGN KEY constraints to avoid InnoDB table-open issues on managed MySQL
 
 CREATE TABLE IF NOT EXISTS users (
     id            INT AUTO_INCREMENT PRIMARY KEY,
@@ -20,8 +19,7 @@ CREATE TABLE IF NOT EXISTS face_encodings (
     user_id    INT NOT NULL,
     encoding   BLOB NOT NULL,
     sample_no  TINYINT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS attendance (
@@ -34,8 +32,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     confidence FLOAT,
     marked_by  INT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_user_day (user_id, date),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    UNIQUE KEY uniq_user_day (user_id, date)
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (
