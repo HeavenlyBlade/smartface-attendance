@@ -137,3 +137,29 @@ def _role_redirect(role):
     if role == 'student':
         return redirect(url_for('attendance.my_attendance'))
     return redirect(url_for('auth.login'))
+
+@auth_bp.route('/db-status')
+def db_status():
+    """Temporary diagnostic route - shows DB user count."""
+    try:
+        from models.db import execute_query
+        row = execute_query('SELECT COUNT(*) AS c FROM users', fetchone=True)
+        count = row['c'] if row else 0
+        return f'Users in DB: {count}. Go to /run-seed if 0.', 200
+    except Exception as e:
+        return f'DB error: {e}', 500
+
+
+@auth_bp.route('/run-seed')
+def run_seed():
+    """Temporary route - runs seed if no users exist."""
+    try:
+        from models.db import execute_query
+        row = execute_query('SELECT COUNT(*) AS c FROM users', fetchone=True)
+        if row and row['c'] > 0:
+            return f"Already have {row['c']} users. Try admin@sacli.edu.ph / Admin123", 200
+        from database.init_db import _run_seed
+        _run_seed()
+        return 'Seed completed. Login with admin@sacli.edu.ph / Admin123', 200
+    except Exception as e:
+        return f'Seed error: {e}', 500
