@@ -1,4 +1,4 @@
-"""
+﻿"""
 app.py — SmartFace Flask application entry point
 
 Startup sequence
@@ -33,7 +33,8 @@ from flask import Flask, jsonify, render_template
 # calls inside config.py resolve to the correct values.
 load_dotenv()
 
-import config  # noqa: E402 — must come after load_dotenv()
+import config  # noqa: E402
+from database.init_db import init_db  # auto-creates schema+seed on first boot — must come after load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -134,6 +135,10 @@ def create_app() -> Flask:
     # ------------------------------------------------------------------ #
     # Startup: pre-load face-encoding cache                               #
     # ------------------------------------------------------------------ #
+
+    # Auto-initialise DB on first boot (creates tables + seeds demo data)
+    with app.app_context():
+        init_db()
 
     with app.app_context():
         if _face_service_available:
