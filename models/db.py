@@ -33,6 +33,11 @@ def get_connection():
 
 
 def release_connection(conn):
+    # Always rollback before returning to pool to clear any open transaction
+    try:
+        conn.rollback()
+    except Exception:
+        pass
     _get_pool().putconn(conn)
 
 
@@ -49,28 +54,41 @@ def execute_query(sql, params=(), fetchone=False, fetchall=False, commit=False):
     with _managed_connection() as conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         try:
-            # Auto-append RETURNING id for INSERT statements so callers get the new PK
-            exec_sql = sql
             is_insert = sql.strip().upper().startswith("INSERT")
+
+            # For INSERT with commit, append RETURNING id to get the new PK
+            exec_sql = sql
             if commit and is_insert and "RETURNING" not in sql.upper():
                 exec_sql = sql.rstrip().rstrip(";") + " RETURNING id"
+
             cur.execute(exec_sql, params)
+
             if fetchall:
-                return [dict(r) for r in cur.fetchall()]
+                rows = cur.fetchall()
+                conn.rollback()  # end transaction cleanly
+                return [dict(r) for r in rows]
+
             if fetchone:
                 row = cur.fetchone()
+                conn.rollback()  # end transaction cleanly
                 return dict(row) if row else None
+
             if commit:
-                conn.commit()
-                if is_insert:
-                    row = cur.fetchone()
+                if is_insert and "RETURNING" in exec_sql.upper():
+                    row = cur.fetchone()  # fetch BEFORE commit
+                    conn.commit()
                     return row["id"] if row else None
+                conn.commit()
                 return None
+
             return None
+
         except Exception as exc:
             logger.error("execute_query error: %s | sql: %.120s", exc, sql)
-            if commit:
+            try:
                 conn.rollback()
+            except Exception:
+                pass
             raise
         finally:
             cur.close()
