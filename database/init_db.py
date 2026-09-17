@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def init_db() -> None:
+    print("[init_db] Starting database initialisation check...", flush=True)
     try:
         from models.db import get_connection
         conn = get_connection()
@@ -19,14 +20,15 @@ def init_db() -> None:
         cur.close()
         conn.close()
         if row and row[0] > 0:
-            logger.info("init_db: tables already exist, skipping.")
+            print("[init_db] Tables already exist, skipping.", flush=True)
             return
-        logger.info("init_db: first boot detected, running schema + seed...")
+        print("[init_db] First boot - creating tables...", flush=True)
         _run_schema()
-        logger.info("init_db: schema applied, seeding...")
+        print("[init_db] Tables created - seeding data...", flush=True)
         _run_seed()
-        logger.info("init_db: database ready.")
+        print("[init_db] Done - database ready.", flush=True)
     except Exception as exc:
+        print(f"[init_db] ERROR: {exc}", flush=True)
         logger.error("init_db failed: %s", exc)
 
 
