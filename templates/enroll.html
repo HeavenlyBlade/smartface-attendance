@@ -286,6 +286,52 @@
     display: none;
   }
 
+  /* ---- Live face detection overlay ---- */
+  #face-detect-canvas {
+    position:       absolute;
+    top:            0; left: 0;
+    width:          100%; height: 100%;
+    pointer-events: none;
+    border-radius:  var(--radius-md);
+  }
+
+  /* Face status pill — floats at bottom of webcam view */
+  #face-detect-status {
+    position:         absolute;
+    bottom:           0.6rem;
+    left:             50%;
+    transform:        translateX(-50%);
+    z-index:          10;
+    padding:          0.25rem 0.85rem;
+    border-radius:    999px;
+    font-size:        0.78rem;
+    font-weight:      700;
+    white-space:      nowrap;
+    pointer-events:   none;
+    transition:       background 0.2s, color 0.2s;
+    backdrop-filter:  blur(4px);
+  }
+
+  #face-detect-status.detected {
+    background: rgba(76, 175, 130, 0.85);
+    color: #fff;
+  }
+
+  #face-detect-status.no-face {
+    background: rgba(0,0,0,0.55);
+    color: rgba(255,255,255,0.75);
+  }
+
+  /* Pulse the capture button when a face is in frame */
+  @keyframes facePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(76,175,130,0.5); }
+    50%       { box-shadow: 0 0 0 8px rgba(76,175,130,0); }
+  }
+
+  #capture-btn.face-ready {
+    animation: facePulse 1.4s ease-in-out infinite;
+  }
+
   /* ---- Responsive: stack on smaller screens ---- */
   @media (max-width: 960px) {
     .enroll-layout {
@@ -518,6 +564,12 @@
             <span id="webcam-initialising" aria-live="polite">
               Requesting camera access…
             </span>
+            <!-- Live face detection overlay (drawn by enroll.js) -->
+            <canvas id="face-detect-canvas" aria-hidden="true"></canvas>
+            <!-- Face status pill -->
+            <div id="face-detect-status" class="no-face" aria-live="polite" aria-atomic="true">
+              Waiting for camera…
+            </div>
           </div>
 
           <!-- Camera error panel — displayed by JS if getUserMedia fails -->
@@ -617,6 +669,8 @@
   enroll.js — webcam stream, frame capture, thumbnail injection, form
   submission handler.  Implemented in Task 2.5.
 -->
+<!-- MediaPipe Face Detection (lightweight, ~1.5 MB WASM) -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js" crossorigin="anonymous"></script>
 <script src="{{ url_for('static', filename='js/enroll.js') }}"></script>
 
 <script>

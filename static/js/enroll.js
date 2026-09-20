@@ -44,6 +44,20 @@
   var enrollForm     = document.getElementById('enroll-form');
 
   /* -----------------------------------------------------------------------
+     Face-detection DOM references & state
+  ----------------------------------------------------------------------- */
+  var faceCanvas  = document.getElementById('face-detect-canvas');
+  var faceStatus  = document.getElementById('face-detect-status');
+  var faceCtx     = faceCanvas ? faceCanvas.getContext('2d') : null;
+
+  /** @type {import('@mediapipe/tasks-vision').FaceDetector|null} */
+  var faceDetector       = null;
+  var faceDetectRunning  = false;
+  var faceInFrame        = false;     // exported to module scope so captureFrame can read it
+  var detectAnimFrame    = null;
+  var _lastDetectTs      = -1;        // guards monotonically-increasing timestamp requirement
+
+  /* -----------------------------------------------------------------------
      State
   ----------------------------------------------------------------------- */
   /** @type {string[]} Array of base64 JPEG data-URLs (one per captured sample) */
@@ -85,6 +99,9 @@
           var alreadyAtMax = capturedSamples.length >= MAX_SAMPLES;
           captureBtn.disabled = alreadyAtMax;
           captureBtn.setAttribute('aria-disabled', alreadyAtMax ? 'true' : 'false');
+
+          // Start face detection overlay once video is live
+          startFaceDetection();
         };
       })
       .catch(function () {
@@ -102,6 +119,205 @@
     if (errorPanel) errorPanel.style.display = '';
     captureBtn.disabled = true;
     captureBtn.setAttribute('aria-disabled', 'true');
+    stopFaceDetection();
+  }
+
+  /* -----------------------------------------------------------------------
+     MediaPipe Face Detector — initialisation
+  ----------------------------------------------------------------------- */
+
+  /**
+   * Load MediaPipe FaceDetector from the CDN-provided globals.
+   * Non-fatal: if this fails the rest of the page keeps working.
+   */
+  async function initFaceDetector() {
+    try {
+      // FilesetResolver and FaceDetector are globals injected by vision_bundle.js
+      var vision = await FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+      );
+      faceDetector = await FaceDetector.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            'https://storage.googleapis.com/mediapipe-models/face_detector/' +
+            'blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+          delegate: 'GPU'
+        },
+        runningMode: 'VIDEO',
+        minDetectionConfidence: 0.5,
+        minSuppressionThreshold: 0.3
+      });
+    } catch (e) {
+      // Non-fatal — face detection preview just won't show
+      console.warn('FaceDetector init failed:', e);
+      faceDetector = null;
+    }
+  }
+
+  /* -----------------------------------------------------------------------
+     MediaPipe Face Detector — rAF detection loop
+  ----------------------------------------------------------------------- */
+
+  /**
+   * Start the requestAnimationFrame detection loop.
+   * Syncs canvas to the video display size every frame, runs FaceDetector,
+   * draws a green bounding box when a face is present, and updates the
+   * status pill + capture button class.
+   */
+  function startFaceDetection() {
+    // Already running — no-op
+    if (faceDetectRunning) return;
+
+    faceDetectRunning = true;
+
+    // Reset pill to "waiting" state until first detection result arrives
+    _setStatusPill('no-face', 'Position face in frame');
+
+    function detectLoop() {
+      if (!faceDetectRunning) return;
+
+      detectAnimFrame = requestAnimationFrame(detectLoop);
+
+      // Skip if video isn't ready
+      if (!video || video.readyState < 2 || !video.videoWidth) return;
+
+      // Sync canvas pixel dimensions to the video's current display size
+      var displayW = video.offsetWidth  || video.videoWidth;
+      var displayH = video.offsetHeight || video.videoHeight;
+      if (faceCanvas && (faceCanvas.width !== displayW || faceCanvas.height !== displayH)) {
+        faceCanvas.width  = displayW;
+        faceCanvas.height = displayH;
+      }
+
+      // Clear previous frame
+      if (faceCtx && faceCanvas) {
+        faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+      }
+
+      // No detector yet (still loading or failed) — just show the pill
+      if (!faceDetector) return;
+
+      // MediaPipe requires monotonically increasing timestamps
+      var now = performance.now();
+      if (now <= _lastDetectTs) return;
+      _lastDetectTs = now;
+
+      var result;
+      try {
+        result = faceDetector.detectForVideo(video, now);
+      } catch (e) {
+        // Detection error — skip this frame silently
+        return;
+      }
+
+      var detections = (result && result.detections) ? result.detections : [];
+
+      if (detections.length > 0) {
+        // ---- Face present ----
+        faceInFrame = true;
+        _setStatusPill('detected', 'Face detected ✓');
+        captureBtn.classList.add('face-ready');
+
+        // Draw bounding boxes for every detected face
+        if (faceCtx && faceCanvas) {
+          var scaleX = faceCanvas.width  / video.videoWidth;
+          var scaleY = faceCanvas.height / video.videoHeight;
+
+          faceCtx.strokeStyle = '#4CAF82';
+          faceCtx.lineWidth   = 3;
+
+          for (var i = 0; i < detections.length; i++) {
+            var bb = detections[i].boundingBox;
+            if (!bb) continue;
+
+            var x = bb.originX * scaleX;
+            var y = bb.originY * scaleY;
+            var w = bb.width   * scaleX;
+            var h = bb.height  * scaleY;
+
+            _strokeRoundRect(faceCtx, x, y, w, h, 8);
+          }
+        }
+      } else {
+        // ---- No face ----
+        faceInFrame = false;
+        _setStatusPill('no-face', 'Position face in frame');
+        captureBtn.classList.remove('face-ready');
+      }
+    }
+
+    detectLoop();
+  }
+
+  /**
+   * Stop the detection loop, cancel any pending animation frame, clear the
+   * canvas, and reset the status pill.
+   */
+  function stopFaceDetection() {
+    faceDetectRunning = false;
+    faceInFrame = false;
+
+    if (detectAnimFrame !== null) {
+      cancelAnimationFrame(detectAnimFrame);
+      detectAnimFrame = null;
+    }
+
+    if (faceCtx && faceCanvas) {
+      faceCtx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+    }
+
+    _setStatusPill('no-face', 'Waiting for camera…');
+    captureBtn.classList.remove('face-ready');
+  }
+
+  /* -----------------------------------------------------------------------
+     Face-detection drawing helpers
+  ----------------------------------------------------------------------- */
+
+  /**
+   * Update the face-status pill's CSS class and text.
+   * @param {'detected'|'no-face'} cls
+   * @param {string} text
+   */
+  function _setStatusPill(cls, text) {
+    if (!faceStatus) return;
+    faceStatus.className = cls;
+    faceStatus.textContent = text;
+  }
+
+  /**
+   * Stroke a rounded rectangle path.
+   * Falls back to a manual bezier path if CanvasRenderingContext2D.roundRect
+   * is not available (Safari < 15.4, older Chrome).
+   *
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} x
+   * @param {number} y
+   * @param {number} w
+   * @param {number} h
+   * @param {number} r  Corner radius in pixels
+   */
+  function _strokeRoundRect(ctx, x, y, w, h, r) {
+    // Clamp radius so it never exceeds half the shorter side
+    r = Math.min(r, w / 2, h / 2);
+
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(x, y, w, h, r);
+    } else {
+      // Manual rounded-rect path (compatible fallback)
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y,     x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x,     y + h, x,     y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x,     y,     x + r, y);
+      ctx.closePath();
+    }
+    ctx.stroke();
   }
 
   /* -----------------------------------------------------------------------
@@ -143,6 +359,7 @@
     capturedSamples.push(dataUrl);
     addThumbnail(dataUrl, capturedSamples.length);
     updateUI();
+    // The rAF loop continues — bounding box stays live, no extra action needed
   }
 
   /* -----------------------------------------------------------------------
@@ -520,6 +737,7 @@
         activeStream.getTracks().forEach(function (t) { t.stop(); });
         activeStream = null;
       }
+      stopFaceDetection();
       startCamera();
     });
   }
@@ -543,5 +761,13 @@
 
   // Start the webcam stream
   startCamera();
+
+  // Load MediaPipe FaceDetector (non-blocking — degrades silently if CDN fails)
+  if (typeof FilesetResolver !== 'undefined') {
+    initFaceDetector();
+  }
+  // If the CDN bundle hasn't defined FilesetResolver yet (e.g. slow network),
+  // the detection loop still runs — it just skips inference until faceDetector
+  // is non-null, so the rest of the page is unaffected.
 
 })();
