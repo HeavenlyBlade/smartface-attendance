@@ -27,7 +27,7 @@ import os
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, redirect
+from flask import Flask, jsonify, render_template, redirect, url_for
 
 # Load .env from the project root before importing config so that os.getenv
 # calls inside config.py resolve to the correct values.
@@ -140,11 +140,12 @@ def create_app() -> Flask:
 
     @app.errorhandler(401)
     def unauthorized(exc):
-        """Return JSON 401 for API routes (role_required on API endpoints)."""
+        """Return JSON 401 for API routes, redirect to login for page routes."""
         from flask import request as _req
         if _req.path.startswith("/api/"):
             return jsonify({"error": "Authentication required"}), 401
-        return redirect(url_for("auth.login"))
+        from flask import url_for as _url_for
+        return redirect(_url_for("auth.login"))
 
     # ------------------------------------------------------------------ #
     # Startup: pre-load face-encoding cache                               #
