@@ -186,10 +186,13 @@ def enroll():
             cursor.execute(
                 "INSERT INTO users "
                 "(full_name, email, password_hash, role, id_number, department, consent_given) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
                 (full_name, email, password_hash, role, id_number, department, 1),
             )
-            new_user_id = cursor.lastrowid
+            row = cursor.fetchone()
+            new_user_id = row["id"] if row else None
+            if not new_user_id:
+                raise Exception("INSERT returned no id")
             logger.info("enroll: inserted users row id=%s", new_user_id)
         except Exception as exc:
             logger.error("enroll: failed to insert users row: %s", exc)
@@ -199,8 +202,9 @@ def enroll():
         # ---- Step B: INSERT face_encodings BLOBs --------------------
         # Requirement 3.7 — serialize with enc.tobytes()
         try:
+            import psycopg2
             encoding_rows = [
-                (new_user_id, serialize_encoding(enc), idx + 1)
+                (new_user_id, psycopg2.Binary(serialize_encoding(enc)), idx + 1)
                 for idx, enc in enumerate(encodings)
             ]
             cursor.executemany(
