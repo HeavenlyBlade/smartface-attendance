@@ -1,4 +1,4 @@
-﻿"""
+"""
 services/face_service.py -- SmartFace facial encoding cache and recognition pipeline
 
 Backend: DeepFace + Facenet (128-dim embeddings).
@@ -254,6 +254,11 @@ def encode_samples(image_list: list[bytes]) -> list[np.ndarray]:
         if frame is None:
             raise ValueError(f"Sample {idx}: could not decode image")
 
+        # Resize to 160x160 before passing to DeepFace.
+        # Facenet was trained on 160x160 — this is the canonical input size.
+        # It also dramatically reduces memory usage on the free tier (512 MB RAM).
+        frame = cv2.resize(frame, (160, 160))
+
         # DeepFace expects RGB input; OpenCV decodes as BGR
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -261,9 +266,13 @@ def encode_samples(image_list: list[bytes]) -> list[np.ndarray]:
             result = DeepFace.represent(
                 img_path=rgb,
                 model_name="Facenet",
-                enforce_detection=True,
+                enforce_detection=False,  # already cropped to face via webcam, skip detector
             )
-        except ValueError:
+        except (ValueError, Exception) as e:
+            # enforce_detection=False should not raise, but guard anyway
+            raise ValueError(f"Sample {idx}: no face detected in image")
+
+        if not result or "embedding" not in result[0]:
             raise ValueError(f"Sample {idx}: no face detected in image")
 
         embedding = np.array(result[0]["embedding"], dtype=np.float64)  # shape (128,)

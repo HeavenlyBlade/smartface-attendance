@@ -39,4 +39,4 @@ else:
     log.info("  Threads: %d", a.threads)
     log.info("=" * 52)
     _ws(fa, host=a.host, port=a.port, threads=a.threads,
-        channel_timeout=60, ident="SmartFace/1.0")
+        channel_timeout=120, ident="SmartFace/1.0")
