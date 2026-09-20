@@ -140,16 +140,16 @@ def get_records(filters: dict) -> dict:
 
     where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
-    base_from = (
+    join_clause = (
         "FROM attendance a "
         "JOIN users u ON a.user_id = u.id "
-        f"{where_clause}"
+        + where_clause
     )
 
     # ------------------------------------------------------------------
     # COUNT — total matching rows for pagination metadata
     # ------------------------------------------------------------------
-    count_sql = f"SELECT COUNT(*) AS total {base_from}"
+    count_sql = "SELECT COUNT(*) AS total " + join_clause
     count_row = execute_query(count_sql, params=tuple(params), fetchone=True)
     total: int = int(count_row["total"]) if count_row else 0
     pages: int = math.ceil(total / per_page) if total > 0 else 1
@@ -160,8 +160,8 @@ def get_records(filters: dict) -> dict:
     data_sql = (
         "SELECT u.full_name, u.id_number, u.department, u.role, "
         "       a.date, a.time_in, a.time_out, a.status, a.confidence "
-        f"{base_from} "
-        "ORDER BY a.date DESC, a.time_in DESC "
+        + join_clause
+        + " ORDER BY a.date DESC, a.time_in DESC "
         "LIMIT %s OFFSET %s"
     )
     data_params = tuple(params) + (per_page, offset)
@@ -209,9 +209,9 @@ def manual_override(
     sql = (
         "INSERT INTO attendance (user_id, date, status, marked_by) "
         "VALUES (%s, %s, %s, %s) "
-        "ON DUPLICATE KEY UPDATE "
-        "status = VALUES(status), "
-        "marked_by = VALUES(marked_by)"
+        "ON CONFLICT (user_id, date) DO UPDATE SET "
+        "status = EXCLUDED.status, "
+        "marked_by = EXCLUDED.marked_by"
     )
     execute_query(sql, params=(user_id, date, status, admin_id), commit=True)
     logger.debug(

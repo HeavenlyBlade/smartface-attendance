@@ -58,16 +58,17 @@ def dashboard():
 
     try:
         present_count = (execute_query(
-            "SELECT COUNT(*) AS c FROM attendance WHERE date=%s AND status='present'",
-            params=(today,), fetchone=True) or {}).get("c", 0)
+            "SELECT COUNT(*) AS cnt FROM attendance WHERE date=%s AND status='present'",
+
+            params=(today,), fetchone=True) or {}).get("cnt", 0)
 
         late_count = (execute_query(
-            "SELECT COUNT(*) AS c FROM attendance WHERE date=%s AND status='late'",
-            params=(today,), fetchone=True) or {}).get("c", 0)
+            "SELECT COUNT(*) AS cnt FROM attendance WHERE date=%s AND status='late'",
+            params=(today,), fetchone=True) or {}).get("cnt", 0)
 
         total_users = (execute_query(
-            "SELECT COUNT(*) AS c FROM users WHERE is_active=1",
-            fetchone=True) or {}).get("c", 0)
+            "SELECT COUNT(*) AS cnt FROM users WHERE is_active=1",
+            fetchone=True) or {}).get("cnt", 0)
 
         records = get_today_records()
     except Exception as exc:
