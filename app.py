@@ -172,6 +172,30 @@ def create_app() -> Flask:
                 "services/face_service.py is implemented."
             )
 
+    # ------------------------------------------------------------------ #
+    # Pre-warm DeepFace model                                             #
+    # Download and cache Facenet weights at startup so the first          #
+    # recognition request does not time out (model is 92 MB).            #
+    # ------------------------------------------------------------------ #
+    if _face_service_available:
+        try:
+            from services.face_service import DEEPFACE_AVAILABLE
+            if DEEPFACE_AVAILABLE:
+                logger.info("Pre-warming DeepFace Facenet model...")
+                import numpy as np
+                import cv2
+                from deepface import DeepFace
+                # Run a dummy inference to trigger model weight download
+                dummy = np.zeros((100, 100, 3), dtype=np.uint8)
+                DeepFace.represent(
+                    img_path=dummy,
+                    model_name="Facenet",
+                    enforce_detection=False,
+                )
+                logger.info("DeepFace model pre-warmed successfully.")
+        except Exception as exc:
+            logger.warning("DeepFace pre-warm failed (non-fatal): %s", exc)
+
     return app
 
 
