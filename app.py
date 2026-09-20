@@ -1,4 +1,4 @@
-﻿"""
+"""
 app.py — SmartFace Flask application entry point
 
 Startup sequence
@@ -27,7 +27,7 @@ import os
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, redirect
 
 # Load .env from the project root before importing config so that os.getenv
 # calls inside config.py resolve to the correct values.
@@ -128,9 +128,23 @@ def create_app() -> Flask:
 
     @app.errorhandler(500)
     def internal_error(exc):
-        """Always return JSON for 500 — avoids template errors masking real ones."""
+        """Return JSON for API routes, HTML for page routes."""
         logger.exception("Unhandled 500 error: %s", exc)
-        return jsonify({"error": "Internal server error"}), 500
+        from flask import request as _req
+        if _req.path.startswith("/api/") or "application/json" in _req.accept_mimetypes.best:
+            return jsonify({"error": "Internal server error"}), 500
+        try:
+            return render_template("errors/500.html"), 500
+        except Exception:
+            return jsonify({"error": "Internal server error"}), 500
+
+    @app.errorhandler(401)
+    def unauthorized(exc):
+        """Return JSON 401 for API routes (role_required on API endpoints)."""
+        from flask import request as _req
+        if _req.path.startswith("/api/"):
+            return jsonify({"error": "Authentication required"}), 401
+        return redirect(url_for("auth.login"))
 
     # ------------------------------------------------------------------ #
     # Startup: pre-load face-encoding cache                               #
