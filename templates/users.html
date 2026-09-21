@@ -204,6 +204,7 @@
     <h1 class="page-title">User Management</h1>
     <p class="page-subtitle">
       Manage all registered users — edit profiles, toggle access, and remove biometric data.
+      {% if search %}<span style="color:var(--color-primary);font-weight:600;"> Showing results for "{{ search }}"</span>{% endif %}
     </p>
   </div>
 
@@ -219,10 +220,20 @@
         </span>
       </span>
 
-      <!-- Optional: link to enrollment -->
-      <a href="{{ url_for('admin.enroll_page') }}" class="btn btn-primary btn-sm">
-        + Enroll New User
-      </a>
+      <!-- Search + Enroll row -->
+      <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+        <form method="GET" action="{{ url_for('admin.users') }}" style="display:flex;gap:0.4rem;">
+          <input type="text" name="q" value="{{ search }}" placeholder="Search name, email, ID…"
+                 class="form-control" style="min-width:200px;font-size:0.85rem;padding:0.4rem 0.75rem;"
+                 autocomplete="off" />
+          <button type="submit" class="btn btn-outline-primary btn-sm">Search</button>
+          {% if search %}
+          <a href="{{ url_for('admin.users') }}" class="btn btn-sm btn-outline-primary"
+             style="white-space:nowrap;">✕ Clear</a>
+          {% endif %}
+        </form>
+        <a href="{{ url_for('admin.enroll_page') }}" class="btn btn-primary btn-sm">+ Enroll</a>
+      </div>
     </div>
 
     <div class="card-body" style="padding: 0;">
@@ -346,7 +357,7 @@
             {# Previous #}
             {% if current_page > 1 %}
               <a class="btn btn-outline-primary btn-sm"
-                 href="{{ url_for('admin.users', page=current_page - 1) }}"
+                 href="{{ url_for('admin.users', page=current_page - 1, q=search) }}"
                  aria-label="Previous page">
                 ← Prev
               </a>
@@ -386,7 +397,7 @@
             {# Next #}
             {% if current_page < pages %}
               <a class="btn btn-outline-primary btn-sm"
-                 href="{{ url_for('admin.users', page=current_page + 1) }}"
+                 href="{{ url_for('admin.users', page=current_page + 1, q=search) }}"
                  aria-label="Next page">
                 Next →
               </a>

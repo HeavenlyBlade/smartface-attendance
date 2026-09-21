@@ -85,13 +85,15 @@ def users():
     except (TypeError, ValueError):
         page = 1
 
-    result = list_users(page=page, per_page=25)
+    search = request.args.get("q", "").strip()
+    result = list_users(page=page, per_page=25, search=search)
     return render_template(
         "users.html",
         users=result["users"],
         total=result["total"],
         pages=result["pages"],
         current_page=page,
+        search=search,
     )
 
 

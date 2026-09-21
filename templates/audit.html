@@ -86,4 +86,16 @@
     </div>
   </div>
 </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function clearAuditFilter() {
+  document.getElementById('a-action').value = '';
+  document.getElementById('a-start').value  = '';
+  document.getElementById('a-end').value    = '';
+  window.location.href = '/audit';
+}
+</script>
 {% endblock %}

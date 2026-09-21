@@ -274,7 +274,7 @@ def activate_user(user_id: int) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def list_users(page: int = 1, per_page: int = 25) -> dict:
+def list_users(page: int = 1, per_page: int = 25, search: str = "") -> dict:
     """
     Return a page of users together with pagination metadata.
 
@@ -306,21 +306,34 @@ def list_users(page: int = 1, per_page: int = 25) -> dict:
     offset = (page - 1) * per_page
 
     try:
+        # Build search filter
+        where = ""
+        params_count: tuple = ()
+        params_data: tuple = ()
+        if search:
+            where = (
+                "WHERE full_name ILIKE %s OR email ILIKE %s "
+                "OR id_number ILIKE %s OR department ILIKE %s"
+            )
+            like = f"%{search}%"
+            params_count = (like, like, like, like)
+            params_data  = (like, like, like, like)
+
         # Total count — needed to calculate page metadata
-        count_row = execute_query(
-            "SELECT COUNT(*) AS total FROM users",
-            fetchone=True,
-        )
+        count_sql = "SELECT COUNT(*) AS total FROM users " + where
+        count_row = execute_query(count_sql, params=params_count, fetchone=True)
         total: int = count_row["total"] if count_row else 0
         pages: int = max(1, math.ceil(total / per_page))
 
         # Retrieve columns needed by the user management UI (Requirement 10.1)
-        users = execute_query(
+        data_sql = (
             "SELECT id, full_name, id_number, role, department, is_active, email, created_at "
-            "FROM users "
-            "ORDER BY full_name ASC "
-            "LIMIT %s OFFSET %s",
-            params=(per_page, offset),
+            "FROM users " + where +
+            " ORDER BY full_name ASC LIMIT %s OFFSET %s"
+        )
+        users = execute_query(
+            data_sql,
+            params=params_data + (per_page, offset),
             fetchall=True,
         )
 
