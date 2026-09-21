@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}Audit Log{% endblock %}
 {% block content %}
 <div class="page-wrapper">
@@ -22,15 +22,15 @@
         </div>
         <div style="display:flex;flex-direction:column;gap:0.3rem;">
           <label style="font-size:0.8rem;font-weight:600;color:var(--color-muted);text-transform:uppercase;" for="a-start">From</label>
-          <input id="a-start" name="start_date" type="date" class="form-control" value="{{ start_date }}" />
+          <input id="a-start" name="start_date" type="date" class="form-control" value="{{ start_date }}" autocomplete="off" />
         </div>
         <div style="display:flex;flex-direction:column;gap:0.3rem;">
           <label style="font-size:0.8rem;font-weight:600;color:var(--color-muted);text-transform:uppercase;" for="a-end">To</label>
-          <input id="a-end" name="end_date" type="date" class="form-control" value="{{ end_date }}" />
+          <input id="a-end" name="end_date" type="date" class="form-control" value="{{ end_date }}" autocomplete="off" />
         </div>
         <div style="display:flex;gap:0.5rem;align-items:flex-end;">
           <button type="submit" class="btn btn-primary">Filter</button>
-          <a href="{{ url_for('admin.audit_log') }}" class="btn btn-outline-primary">Clear</a>
+          <button type="button" class="btn btn-outline-primary" onclick="clearAuditFilter()">Clear</button>
         </div>
       </div>
     </form>
