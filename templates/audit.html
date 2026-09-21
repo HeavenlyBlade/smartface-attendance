@@ -16,7 +16,7 @@
           <select id="a-action" name="action" class="form-control">
             <option value="">All Actions</option>
             {% for val, label in action_choices %}
-            <option value="{{ val }}" {% if action_filter==val %}selected{% endif %}>{{ label }}</option>
+            <option value="{{ val }}" {% if action_filter and action_filter==val %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </div>

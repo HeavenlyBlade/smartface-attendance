@@ -277,14 +277,13 @@
 
                     {# Edit button — opens the edit modal #}
                     <button
-                      class="btn btn-outline-primary btn-sm"
+                      class="btn btn-outline-primary btn-sm btn-edit-user"
                       aria-label="Edit {{ user.full_name }}"
-                      onclick="openEditModal({{ user.id | tojson }},
-                        {{ user.full_name | tojson }},
-                        {{ user.id_number | tojson }},
-                        {{ user.role | tojson }},
-                        {{ (user.department or '') | tojson }}
-                      )"
+                      data-uid="{{ user.id }}"
+                      data-name="{{ user.full_name | e }}"
+                      data-idnum="{{ user.id_number | e }}"
+                      data-role="{{ user.role | e }}"
+                      data-dept="{{ (user.department or '') | e }}"
                     >
                       ✏ Edit
                     </button>
@@ -293,23 +292,21 @@
                     {% if user.id | string != session.user_id | string %}
                       {% if user.is_active %}
                         <button
-                          class="btn btn-outline-danger btn-sm"
+                          class="btn btn-outline-danger btn-sm btn-deactivate-user"
                           aria-label="Deactivate {{ user.full_name }}"
-                          onclick="confirmDeactivate({{ user.id | tojson }},
-                            {{ user.full_name | tojson }},
-                            true
-                          )"
+                          data-uid="{{ user.id }}"
+                          data-name="{{ user.full_name | e }}"
+                          data-active="1"
                         >
                           🔒 Deactivate
                         </button>
                       {% else %}
                         <button
-                          class="btn btn-gold btn-sm"
+                          class="btn btn-gold btn-sm btn-deactivate-user"
                           aria-label="Reactivate {{ user.full_name }}"
-                          onclick="confirmDeactivate({{ user.id | tojson }},
-                            {{ user.full_name | tojson }},
-                            false
-                          )"
+                          data-uid="{{ user.id }}"
+                          data-name="{{ user.full_name | e }}"
+                          data-active="0"
                         >
                           🔓 Reactivate
                         </button>
@@ -323,11 +320,10 @@
 
                     {# Delete Biometrics #}
                     <button
-                      class="btn btn-danger btn-sm"
+                      class="btn btn-danger btn-sm btn-biometric-user"
                       aria-label="Delete biometric data for {{ user.full_name }}"
-                      onclick="confirmDeleteBiometric({{ user.id | tojson }},
-                        {{ user.full_name | tojson }}
-                      )"
+                      data-uid="{{ user.id }}"
+                      data-name="{{ user.full_name | e }}"
                     >
                       🗑 Biometrics
                     </button>
@@ -550,6 +546,42 @@
    users.html — modal & confirm dialog logic
    No external library; all vanilla JS.
    ============================================================================ */
+
+/* ---------------------------------------------------------------------------
+   Delegated click handler — replaces inline onclick attributes
+   --------------------------------------------------------------------------- */
+document.addEventListener('click', function(e) {
+  var editBtn = e.target.closest('.btn-edit-user');
+  if (editBtn) {
+    openEditModal(
+      editBtn.dataset.uid,
+      editBtn.dataset.name,
+      editBtn.dataset.idnum,
+      editBtn.dataset.role,
+      editBtn.dataset.dept
+    );
+    return;
+  }
+
+  var deactivateBtn = e.target.closest('.btn-deactivate-user');
+  if (deactivateBtn) {
+    confirmDeactivate(
+      deactivateBtn.dataset.uid,
+      deactivateBtn.dataset.name,
+      deactivateBtn.dataset.active === '1'
+    );
+    return;
+  }
+
+  var biometricBtn = e.target.closest('.btn-biometric-user');
+  if (biometricBtn) {
+    confirmDeleteBiometric(
+      biometricBtn.dataset.uid,
+      biometricBtn.dataset.name
+    );
+    return;
+  }
+});
 
 /* ---------------------------------------------------------------------------
    Edit Modal
