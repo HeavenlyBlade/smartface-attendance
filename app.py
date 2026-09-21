@@ -173,25 +173,7 @@ def create_app() -> Flask:
                 "services/face_service.py is implemented."
             )
 
-    # ------------------------------------------------------------------ #
-    # Pre-warm DeepFace model in a background thread                     #
-    # Downloads Facenet weights (~92 MB) without blocking port binding.  #
-    # ------------------------------------------------------------------ #
-    if _face_service_available:
-        import threading
-        def _prewarm():
-            try:
-                from services.face_service import DEEPFACE_AVAILABLE
-                if DEEPFACE_AVAILABLE:
-                    logger.info("Pre-warming DeepFace Facenet model (background)...")
-                    import numpy as np
-                    from deepface import DeepFace
-                    dummy = np.zeros((100, 100, 3), dtype=np.uint8)
-                    DeepFace.represent(img_path=dummy, model_name="Facenet", enforce_detection=False)
-                    logger.info("DeepFace model pre-warmed successfully.")
-            except Exception as exc:
-                logger.warning("DeepFace pre-warm failed (non-fatal): %s", exc)
-        threading.Thread(target=_prewarm, daemon=True).start()
+
 
     return app
 

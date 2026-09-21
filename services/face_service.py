@@ -179,8 +179,8 @@ def recognize_frame(image_b64: str) -> list[dict]:
     if frame is None:
         raise ValueError("Could not decode image")
 
-    # Step 2: Downscale 0.25x -- ~4x speedup, non-negotiable for usable framerate
-    small = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
+    # Step 2: Downscale 0.25x -- ~2x speedup, non-negotiable for usable framerate
+    small = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
 
     # Step 3: BGR (OpenCV default) -> RGB (face_recognition expects RGB input)
     rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
@@ -218,8 +218,8 @@ def recognize_frame(image_b64: str) -> list[dict]:
         else:
             uid, name, confidence = None, "Unknown", None
 
-        # Step 8: Scale bounding box back to original frame dimensions (multiply by 4)
-        top, right, bottom, left = [v * 4 for v in loc]
+        # Step 8: Scale bounding box back to original frame dimensions (multiply by 2)
+        top, right, bottom, left = [v * 2 for v in loc]
 
         results.append({
             "user_id":    uid,
