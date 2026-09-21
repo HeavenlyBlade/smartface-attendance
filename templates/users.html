@@ -279,8 +279,7 @@
                     <button
                       class="btn btn-outline-primary btn-sm"
                       aria-label="Edit {{ user.full_name }}"
-                      onclick="openEditModal(
-                        {{ user.id }},
+                      onclick="openEditModal({{ user.id | tojson }},
                         {{ user.full_name | tojson }},
                         {{ user.id_number | tojson }},
                         {{ user.role | tojson }},
@@ -291,13 +290,12 @@
                     </button>
 
                     {# Deactivate / Reactivate — submits a POST form #}
-                    {% if user.id != session.user_id %}
+                    {% if user.id | string != session.user_id | string %}
                       {% if user.is_active %}
                         <button
                           class="btn btn-outline-danger btn-sm"
                           aria-label="Deactivate {{ user.full_name }}"
-                          onclick="confirmDeactivate(
-                            {{ user.id }},
+                          onclick="confirmDeactivate({{ user.id | tojson }},
                             {{ user.full_name | tojson }},
                             true
                           )"
@@ -308,8 +306,7 @@
                         <button
                           class="btn btn-gold btn-sm"
                           aria-label="Reactivate {{ user.full_name }}"
-                          onclick="confirmDeactivate(
-                            {{ user.id }},
+                          onclick="confirmDeactivate({{ user.id | tojson }},
                             {{ user.full_name | tojson }},
                             false
                           )"
@@ -328,8 +325,7 @@
                     <button
                       class="btn btn-danger btn-sm"
                       aria-label="Delete biometric data for {{ user.full_name }}"
-                      onclick="confirmDeleteBiometric(
-                        {{ user.id }},
+                      onclick="confirmDeleteBiometric({{ user.id | tojson }},
                         {{ user.full_name | tojson }}
                       )"
                     >
