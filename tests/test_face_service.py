@@ -1,4 +1,4 @@
-﻿"""
+"""
 tests/test_face_service.py -- Property-based tests for face service
 
 Properties covered:
@@ -150,34 +150,19 @@ def test_property_7_unknown_face_above_tolerance(distance):
 def test_property_11_multi_face_count_mock(n_faces):
     """
     Feature: smartface-attendance-system, Property 11: N faces in frame -> N entries in response
-
-    Validates that recognize_frame returns exactly N entries for N detected faces
-    by mocking DeepFace.represent to return N synthetic face results.
+    Validates that recognize_frame returns exactly N entries for N detected faces.
     """
     dummy_frame = np.zeros((100, 100, 3), dtype=np.uint8)
     _, jpeg_buf = cv2.imencode(".jpg", dummy_frame)
     frame_b64   = base64.b64encode(jpeg_buf.tobytes()).decode("utf-8")
 
-    # Build N synthetic DeepFace.represent() return entries
-    fake_results = [
-        {
-            "embedding": [0.0] * 128,
-            "facial_area": {"x": 10 * i, "y": 10 * i, "w": 40, "h": 40},
-        }
-        for i in range(n_faces)
-    ]
+    fake_locs = [(10 * i, 10 * i + 40, 10 * i + 40, 10 * i) for i in range(n_faces)]
+    fake_encs = [np.zeros(128, dtype=np.float64) for _ in range(n_faces)]
 
     import services.face_service as fs
-
-    with patch.object(fs, "DeepFace") as mock_deepface:
-        mock_deepface.represent.return_value = fake_results
-        # Ensure DEEPFACE_AVAILABLE is True for the duration of this test
-        original_flag = fs.DEEPFACE_AVAILABLE
-        fs.DEEPFACE_AVAILABLE = True
-        try:
-            result = fs.recognize_frame(frame_b64)
-        finally:
-            fs.DEEPFACE_AVAILABLE = original_flag
+    with patch("face_recognition.face_locations", return_value=fake_locs), \
+         patch("face_recognition.face_encodings", return_value=fake_encs):
+        result = fs.recognize_frame(frame_b64)
 
     assert len(result) == n_faces, (
         f"Expected {n_faces} faces in response, got {len(result)}"

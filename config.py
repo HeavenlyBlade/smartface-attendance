@@ -22,8 +22,7 @@ load_dotenv()
 
 # Distance threshold for accepting a face match.
 # Lower = stricter (fewer false positives, more false negatives).
-# 0.40 (cosine) -- tighter than the old 0.45 (Euclidean) because Facenet
-# cosine distances occupy a narrower scale than dlib Euclidean distances.
+# # cosine distances occupy a narrower scale than dlib Euclidean distances.
 # Adjust via the TOLERANCE env var if recognition is too strict/lenient.
 TOLERANCE: float = float(os.getenv("TOLERANCE", 0.40))
 
