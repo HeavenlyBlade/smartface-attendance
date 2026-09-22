@@ -329,15 +329,28 @@
                       </button>
                     {% endif %}
 
-                    {# Delete Biometrics #}
+                    {# Reset Biometrics (delete so user can be re-enrolled) #}
                     <button
-                      class="btn btn-danger btn-sm btn-biometric-user"
-                      aria-label="Delete biometric data for {{ user.full_name }}"
+                      class="btn btn-outline-danger btn-sm btn-biometric-user"
+                      aria-label="Reset biometrics for {{ user.full_name }}"
+                      data-uid="{{ user.id }}"
+                      data-name="{{ user.full_name | e }}"
+                      title="Delete face encodings so user can be re-enrolled"
+                    >
+                      🔄 Re-enroll
+                    </button>
+
+                    {# Delete User (permanent) #}
+                    {% if user.id | string != session.user_id | string %}
+                    <button
+                      class="btn btn-danger btn-sm btn-delete-user"
+                      aria-label="Delete {{ user.full_name }}"
                       data-uid="{{ user.id }}"
                       data-name="{{ user.full_name | e }}"
                     >
-                      🗑 Biometrics
+                      🗑 Delete
                     </button>
+                    {% endif %}
 
                   </div>
                 </td>
@@ -548,6 +561,25 @@
   </div>
 </div>
 
+
+<!-- Delete User Confirmation Modal -->
+<div class="confirm-backdrop" id="deleteUserBackdrop" role="dialog" aria-modal="true">
+  <div class="confirm-dialog">
+    <div class="confirm-icon">🗑️</div>
+    <h2 class="confirm-title" id="deleteUserTitle">Delete User?</h2>
+    <p class="confirm-body" id="deleteUserBody">
+      This will permanently delete the user, all their attendance records,
+      and all biometric data. This action cannot be undone.
+    </p>
+    <div class="confirm-footer">
+      <button class="btn btn-outline-primary" onclick="closeDeleteUser()">Cancel</button>
+      <form id="deleteUserForm" method="POST" action="" style="display:inline;">
+        <button type="submit" class="btn btn-danger">Yes, Delete Permanently</button>
+      </form>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 
@@ -562,6 +594,12 @@
    Delegated click handler — replaces inline onclick attributes
    --------------------------------------------------------------------------- */
 document.addEventListener('click', function(e) {
+  var deleteUserBtn = e.target.closest('.btn-delete-user');
+  if (deleteUserBtn) {
+    confirmDeleteUser(deleteUserBtn.dataset.uid, deleteUserBtn.dataset.name);
+    return;
+  }
+
   var editBtn = e.target.closest('.btn-edit-user');
   if (editBtn) {
     openEditModal(
@@ -705,6 +743,28 @@ document.getElementById('biometricBackdrop').addEventListener('click', function(
 
 
 /* ---------------------------------------------------------------------------
+   Delete User Confirm
+   --------------------------------------------------------------------------- */
+function confirmDeleteUser(userId, fullName) {
+  var backdrop = document.getElementById('deleteUserBackdrop');
+  var form     = document.getElementById('deleteUserForm');
+  var title    = document.getElementById('deleteUserTitle');
+  var body     = document.getElementById('deleteUserBody');
+  form.action       = '/users/' + userId + '/delete';
+  title.textContent = 'Delete ' + fullName + '?';
+  body.textContent  = fullName + ' will be permanently removed — all attendance records and biometric data will be deleted. This cannot be undone.';
+  backdrop.classList.add('open');
+}
+
+function closeDeleteUser() {
+  document.getElementById('deleteUserBackdrop').classList.remove('open');
+}
+
+document.getElementById('deleteUserBackdrop').addEventListener('click', function(e) {
+  if (e.target === this) { closeDeleteUser(); }
+});
+
+/* ---------------------------------------------------------------------------
    ESC key closes any open modal / confirm
    --------------------------------------------------------------------------- */
 document.addEventListener('keydown', function(e) {
@@ -712,6 +772,7 @@ document.addEventListener('keydown', function(e) {
     closeEditModal();
     closeDeactivate();
     closeBiometric();
+    closeDeleteUser();
   }
 });
 </script>

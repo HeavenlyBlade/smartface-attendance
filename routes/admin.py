@@ -271,6 +271,63 @@ def delete_biometric_route(user_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Delete User  (hard delete — removes user + all associated data)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/users/<int:user_id>/delete", methods=["POST"])
+@role_required("admin")
+def delete_user_route(user_id: int):
+    """
+    POST /users/<id>/delete
+    Permanently deletes the user, their face encodings, attendance records,
+    and raw JPEG samples. Writes an audit log entry.
+    """
+    import shutil
+    from models.audit import write_audit, ACTION_DEACTIVATE
+
+    admin_id = session["user_id"]
+
+    if user_id == admin_id:
+        flash("You cannot delete your own account.", "error")
+        return redirect(url_for("admin.users"))
+
+    target = get_user_by_id(user_id)
+    if not target:
+        flash("User not found.", "error")
+        return redirect(url_for("admin.users"))
+
+    try:
+        # Remove raw JPEG samples directory
+        sample_dir = os.path.join(config.UPLOAD_DIR, str(user_id))
+        if os.path.isdir(sample_dir):
+            shutil.rmtree(sample_dir, ignore_errors=True)
+
+        # Delete from DB (CASCADE removes face_encodings and attendance)
+        execute_query("DELETE FROM users WHERE id = %s", params=(user_id,), commit=True)
+
+        # Refresh encoding cache
+        try:
+            from services.face_service import reload_known_faces
+            reload_known_faces()
+        except Exception:
+            pass
+
+        # Audit log
+        write_audit(
+            user_id=admin_id,
+            action="user_deleted",
+            details=f"Admin {admin_id} permanently deleted user id={user_id} ({target['full_name']}, {target['email']})",
+            ip_address=request.remote_addr,
+        )
+
+        flash(f"User '{target['full_name']}' has been permanently deleted.", "success")
+    except Exception as exc:
+        logger.error("delete_user_route: failed for user_id=%s — %s", user_id, exc)
+        flash("An error occurred while deleting the user.", "error")
+
+    return redirect(url_for("admin.users"))
+
+# ---------------------------------------------------------------------------
 # Audit Log  (Task 2.8 — filled out fully here)
 # ---------------------------------------------------------------------------
 

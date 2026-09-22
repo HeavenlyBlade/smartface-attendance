@@ -9,30 +9,38 @@
 
   <!-- Filter Form -->
   <div style="background:var(--color-white);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:1.25rem 1.5rem;margin-bottom:1.5rem;">
-    <form method="GET" action="{{ url_for('admin.audit_log') }}">
+    <form id="audit-filter-form" method="GET" action="{{ url_for('admin.audit_log') }}">
       <div style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;">
         <div style="display:flex;flex-direction:column;gap:0.3rem;">
           <label style="font-size:0.8rem;font-weight:600;color:var(--color-muted);text-transform:uppercase;" for="a-action">Action Type</label>
-          <select id="a-action" name="action" class="form-control">
+          <select id="a-action" name="action" class="form-control" style="min-width:160px;">
             <option value="">All Actions</option>
             {% for val, label in action_choices %}
-            <option value="{{ val }}" {% if action_filter and action_filter==val %}selected{% endif %}>{{ label }}</option>
+            <option value="{{ val }}" {% if action_filter and action_filter == val %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </div>
         <div style="display:flex;flex-direction:column;gap:0.3rem;">
           <label style="font-size:0.8rem;font-weight:600;color:var(--color-muted);text-transform:uppercase;" for="a-start">From</label>
-          <input id="a-start" name="start_date" type="date" class="form-control" value="{{ start_date }}" autocomplete="off" />
+          <input id="a-start" name="start_date" type="date" class="form-control" value="{{ start_date or '' }}" autocomplete="off" />
         </div>
         <div style="display:flex;flex-direction:column;gap:0.3rem;">
           <label style="font-size:0.8rem;font-weight:600;color:var(--color-muted);text-transform:uppercase;" for="a-end">To</label>
-          <input id="a-end" name="end_date" type="date" class="form-control" value="{{ end_date }}" autocomplete="off" />
+          <input id="a-end" name="end_date" type="date" class="form-control" value="{{ end_date or '' }}" autocomplete="off" />
         </div>
         <div style="display:flex;gap:0.5rem;align-items:flex-end;">
           <button type="submit" class="btn btn-primary">Filter</button>
-          <button type="button" class="btn btn-outline-primary" onclick="clearAuditFilter()">Clear</button>
+          <button type="button" class="btn btn-outline-primary" id="clear-audit-btn">Clear</button>
         </div>
       </div>
+      {% if action_filter or start_date or end_date %}
+      <div style="margin-top:0.6rem;font-size:0.82rem;color:var(--color-primary);">
+        Active filters:
+        {% if action_filter %}<strong>Action:</strong> {{ action_filter }}{% endif %}
+        {% if start_date %} &nbsp;<strong>From:</strong> {{ start_date }}{% endif %}
+        {% if end_date %} &nbsp;<strong>To:</strong> {{ end_date }}{% endif %}
+      </div>
+      {% endif %}
     </form>
   </div>
 
@@ -47,16 +55,22 @@
       <div class="table-wrapper" style="border:none;border-radius:0;">
         <table class="table">
           <thead>
-            <tr><th>Timestamp</th><th>User ID</th><th>Action</th><th>Details</th><th>IP Address</th></tr>
+            <tr>
+              <th>Timestamp</th>
+              <th>User ID</th>
+              <th>Action</th>
+              <th>Details</th>
+              <th>IP Address</th>
+            </tr>
           </thead>
           <tbody>
             {% for e in entries %}
             <tr>
-              <td style="white-space:nowrap;">{{ e.timestamp }}</td>
+              <td style="white-space:nowrap;font-size:0.83rem;">{{ e.timestamp }}</td>
               <td>{{ e.user_id or '—' }}</td>
-              <td><code style="font-size:0.8rem;">{{ e.action }}</code></td>
-              <td style="max-width:350px;word-break:break-word;">{{ e.details }}</td>
-              <td>{{ e.ip_address or '—' }}</td>
+              <td><span class="status-badge" style="background:#e0f0ff;color:#1a4a8a;font-size:0.74rem;">{{ e.action }}</span></td>
+              <td style="max-width:350px;word-break:break-word;font-size:0.85rem;">{{ e.details }}</td>
+              <td style="font-size:0.83rem;">{{ e.ip_address or '—' }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -67,11 +81,13 @@
       <div class="card-footer">
         <nav class="pager" aria-label="Audit log pagination">
           {% if current_page > 1 %}
-          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.audit_log', page=current_page-1, action=action_filter or '', start_date=start_date, end_date=end_date) }}">← Prev</a>
+          <a class="btn btn-outline-primary btn-sm"
+             href="{{ url_for('admin.audit_log', page=current_page-1, action=action_filter or '', start_date=start_date or '', end_date=end_date or '') }}">← Prev</a>
           {% else %}<button class="btn btn-outline-primary btn-sm" disabled>← Prev</button>{% endif %}
           <span style="font-size:0.82rem;color:var(--color-muted);padding:0 0.5rem;">Page {{ current_page }} of {{ pages }}</span>
           {% if current_page < pages %}
-          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.audit_log', page=current_page+1, action=action_filter or '', start_date=start_date, end_date=end_date) }}">Next →</a>
+          <a class="btn btn-outline-primary btn-sm"
+             href="{{ url_for('admin.audit_log', page=current_page+1, action=action_filter or '', start_date=start_date or '', end_date=end_date or '') }}">Next →</a>
           {% else %}<button class="btn btn-outline-primary btn-sm" disabled>Next →</button>{% endif %}
         </nav>
       </div>
@@ -80,22 +96,21 @@
       {% else %}
       <div style="text-align:center;padding:3rem;color:var(--color-muted);">
         <div style="font-size:2.5rem;">📋</div>
-        <p>No audit log entries found.</p>
+        <p>No audit log entries found for the selected filters.</p>
       </div>
       {% endif %}
     </div>
   </div>
 </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function clearAuditFilter() {
+document.getElementById('clear-audit-btn').addEventListener('click', function() {
   document.getElementById('a-action').value = '';
   document.getElementById('a-start').value  = '';
   document.getElementById('a-end').value    = '';
-  window.location.href = '/audit';
-}
+  window.location.href = '{{ url_for("admin.audit_log") }}';
+});
 </script>
 {% endblock %}
