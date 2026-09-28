@@ -1,46 +1,19 @@
 /**
- * static/js/camera.js
- *
- * Real-time frame capture loop for the SmartFace kiosk page.
- *
- * Reads configuration from window.KIOSK_CONFIG (injected by kiosk.html):
- *   brightnessThreshold {number}  Mean pixel value (0–255) below which the
- *                                 brightness warning is shown  (default 50)
- *   recognizeUrl        {string}  POST endpoint for frame submission
- *                                 (default '/api/recognize')
- *   overlayFontSize     {string}  CSS font-size string for canvas labels
- *                                 (default '2rem')
- *   overlayLineWidth    {number}  Bounding-box stroke width in px (default 3)
- *   captureQuality      {number}  JPEG quality 0–1 for toDataURL (default 0.7)
- *   captureIntervalMs   {number}  Tick interval in ms (default 1000)
- *
- * Requirement coverage:
- *   5.3  — Frame captured every 1000 ms; JPEG quality 0.7
- *   5.9  — Overlay redrawn within 200 ms of each API response
- *   13.1 — Camera instruction panel shown when getUserMedia is denied
- *   13.2 — Brightness warning banner shown / hidden per mean pixel value
- *   13.3 — "No face detected" pill shown when faces array is empty
- *   13.4 — "Unknown" label + bounding box for unrecognized faces
+ * static/js/camera.js  — SmartFace Kiosk
+ * 500ms capture interval, face mesh overlay, CNN-backed recognition
  */
-
 (function () {
   'use strict';
 
-  /* -----------------------------------------------------------------------
-     Configuration (with safe defaults when KIOSK_CONFIG is absent)
-  ----------------------------------------------------------------------- */
   var cfg = window.KIOSK_CONFIG || {};
-  var BRIGHTNESS_THRESHOLD = (cfg.brightnessThreshold !== undefined)
-    ? cfg.brightnessThreshold : 50;
+  var BRIGHTNESS_THRESHOLD = cfg.brightnessThreshold !== undefined ? cfg.brightnessThreshold : 50;
   var RECOGNIZE_URL        = cfg.recognizeUrl    || '/api/recognize';
   var OVERLAY_FONT_SIZE    = cfg.overlayFontSize  || '2rem';
   var OVERLAY_LINE_WIDTH   = cfg.overlayLineWidth || 3;
   var CAPTURE_QUALITY      = cfg.captureQuality   || 0.7;
-  var CAPTURE_INTERVAL_MS  = cfg.captureIntervalMs || 1000;
+  var CAPTURE_INTERVAL_MS  = cfg.captureIntervalMs || 500;   // 500ms
 
-  /* -----------------------------------------------------------------------
-     DOM references
-  ----------------------------------------------------------------------- */
+  /* DOM */
   var video             = document.getElementById('kiosk-video');
   var overlayCanvas     = document.getElementById('overlay-canvas');
   var cameraErrorPanel  = document.getElementById('camera-error-panel');
@@ -50,506 +23,418 @@
   var kioskIdleText     = document.getElementById('kiosk-idle-text');
   var successAudio      = document.getElementById('success-audio');
   var failAudio         = document.getElementById('fail-audio');
+  var overlayCtx        = overlayCanvas ? overlayCanvas.getContext('2d') : null;
 
-  /* -----------------------------------------------------------------------
-     Canvas context for overlay drawing
-  ----------------------------------------------------------------------- */
-  var overlayCtx = overlayCanvas ? overlayCanvas.getContext('2d') : null;
-
-  /* -----------------------------------------------------------------------
-     State
-  ----------------------------------------------------------------------- */
-  /**
-   * Guards the capture loop: true while a POST /api/recognize request is
-   * in-flight.  If the timer fires while pending is true the tick is skipped
-   * so frames are never stacked up behind a slow server response.
-   * @type {boolean}
-   */
-  var pending = false;
-
-  /**
-   * Tracks whether an audio cue is already playing to prevent overlapping.
-   * @type {boolean}
-   */
+  /* State */
+  var pending      = false;
   var audioPlaying = false;
+  var lastFaces    = [];
 
   /* -----------------------------------------------------------------------
-     Utility helpers
+     MediaPipe FaceMesh — facial landmark scanner overlay
   ----------------------------------------------------------------------- */
+  var faceMesh     = null;
+  var meshCanvas   = document.createElement('canvas');
+  var meshCtx      = meshCanvas.getContext('2d');
+  var meshAnimFrame = null;
+  var meshRunning  = false;
 
-  /**
-   * Sync the overlay canvas resolution to the video element's current
-   * display dimensions.  Called immediately before each draw pass so the
-   * canvas never drifts from the video size after a window resize.
-   */
+  function initFaceMesh() {
+    if (typeof FaceMesh === 'undefined') return;
+    faceMesh = new FaceMesh({
+      locateFile: function(file) {
+        return 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/' + file;
+      }
+    });
+    faceMesh.setOptions({
+      maxNumFaces: 4,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+    faceMesh.onResults(onMeshResults);
+    startMeshLoop();
+  }
+
+  function startMeshLoop() {
+    meshRunning = true;
+    function loop() {
+      if (!meshRunning || !video || video.readyState < 2) {
+        meshAnimFrame = requestAnimationFrame(loop);
+        return;
+      }
+      if (faceMesh) {
+        faceMesh.send({ image: video }).catch(function() {});
+      }
+      meshAnimFrame = requestAnimationFrame(loop);
+    }
+    loop();
+  }
+
+  var _scanPhase = 0;  // for scanning animation
+
+  function onMeshResults(results) {
+    if (!overlayCanvas || !overlayCtx) return;
+
+    syncCanvasSize();
+    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+    var faces = results.multiFaceLandmarks || [];
+
+    if (faces.length > 0) {
+      _scanPhase = (_scanPhase + 3) % 360;
+      faces.forEach(function(landmarks) {
+        drawFaceMesh(landmarks);
+      });
+    }
+
+    // Draw server-side bounding boxes + name labels on top
+    if (lastFaces && lastFaces.length > 0) {
+      drawServerOverlay(lastFaces);
+    }
+  }
+
+  var FACE_OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,
+                   397,365,379,378,400,377,152,148,176,149,150,136,
+                   172,58,132,93,234,127,162,21,54,103,67,109];
+
+  var FACE_CONTOURS = [
+    [33,7,163,144,145,153,154,155,133],   // left eye
+    [362,382,381,380,374,373,390,249,263], // right eye
+    [61,185,40,39,37,0,267,269,270,409,291,308,415,310,311,312,13,82,81,80,191,78], // lips outline
+  ];
+
+  function drawFaceMesh(landmarks) {
+    var W = overlayCanvas.width;
+    var H = overlayCanvas.height;
+
+    // Calculate face bounding box for corner brackets
+    var xs = landmarks.map(function(l) { return l.x * W; });
+    var ys = landmarks.map(function(l) { return l.y * H; });
+    var x1 = Math.min.apply(null, xs), x2 = Math.max.apply(null, xs);
+    var y1 = Math.min.apply(null, ys), y2 = Math.max.apply(null, ys);
+    var pad = 18;
+    x1 -= pad; y1 -= pad; x2 += pad; y2 += pad;
+    var fw = x2 - x1, fh = y2 - y1;
+
+    // --- Scan line animation ---
+    var scanY = y1 + (fh * ((_scanPhase % 180) / 180));
+    overlayCtx.save();
+    var scanGrad = overlayCtx.createLinearGradient(x1, scanY - 4, x1, scanY + 4);
+    scanGrad.addColorStop(0, 'rgba(76,175,130,0)');
+    scanGrad.addColorStop(0.5, 'rgba(76,175,130,0.7)');
+    scanGrad.addColorStop(1, 'rgba(76,175,130,0)');
+    overlayCtx.fillStyle = scanGrad;
+    overlayCtx.fillRect(x1, scanY - 4, fw, 8);
+    overlayCtx.restore();
+
+    // --- Face oval (dotted mesh) ---
+    overlayCtx.save();
+    overlayCtx.strokeStyle = 'rgba(76,175,130,0.5)';
+    overlayCtx.lineWidth   = 1;
+    overlayCtx.setLineDash([2, 3]);
+    overlayCtx.beginPath();
+    FACE_OVAL.forEach(function(idx, i) {
+      var lm = landmarks[idx];
+      var x = lm.x * W, y = lm.y * H;
+      if (i === 0) overlayCtx.moveTo(x, y);
+      else overlayCtx.lineTo(x, y);
+    });
+    overlayCtx.closePath();
+    overlayCtx.stroke();
+    overlayCtx.restore();
+
+    // --- Feature contours (eyes, lips) ---
+    FACE_CONTOURS.forEach(function(contour) {
+      overlayCtx.save();
+      overlayCtx.strokeStyle = 'rgba(212,175,55,0.65)';
+      overlayCtx.lineWidth = 1;
+      overlayCtx.setLineDash([]);
+      overlayCtx.beginPath();
+      contour.forEach(function(idx, i) {
+        var lm = landmarks[idx];
+        var x = lm.x * W, y = lm.y * H;
+        if (i === 0) overlayCtx.moveTo(x, y);
+        else overlayCtx.lineTo(x, y);
+      });
+      overlayCtx.closePath();
+      overlayCtx.stroke();
+      overlayCtx.restore();
+    });
+
+    // --- Key landmark dots (eyes, nose tip, mouth corners) ---
+    var keyPoints = [33, 263, 1, 61, 291, 199];
+    keyPoints.forEach(function(idx) {
+      var lm = landmarks[idx];
+      overlayCtx.save();
+      overlayCtx.beginPath();
+      overlayCtx.arc(lm.x * W, lm.y * H, 2.5, 0, Math.PI * 2);
+      overlayCtx.fillStyle = '#4CAF82';
+      overlayCtx.fill();
+      overlayCtx.restore();
+    });
+
+    // --- Corner brackets ---
+    var cLen = Math.min(fw, fh) * 0.2;
+    var cW   = 3;
+    var corners = [
+      [x1,    y1,    cLen, 0,    0,    cLen],   // top-left
+      [x2,    y1,    -cLen,0,    0,    cLen],   // top-right
+      [x1,    y2,    cLen, 0,    0,    -cLen],  // bottom-left
+      [x2,    y2,    -cLen,0,    0,    -cLen],  // bottom-right
+    ];
+    overlayCtx.save();
+    overlayCtx.strokeStyle = '#4CAF82';
+    overlayCtx.lineWidth   = cW;
+    overlayCtx.setLineDash([]);
+    corners.forEach(function(c) {
+      overlayCtx.beginPath();
+      overlayCtx.moveTo(c[0] + c[2], c[1] + c[3]);
+      overlayCtx.lineTo(c[0], c[1]);
+      overlayCtx.lineTo(c[0] + c[4], c[1] + c[5]);
+      overlayCtx.stroke();
+    });
+    overlayCtx.restore();
+
+    // --- Scanning label ---
+    overlayCtx.save();
+    overlayCtx.font      = 'bold 11px Inter, Arial, sans-serif';
+    overlayCtx.fillStyle = '#4CAF82';
+    overlayCtx.textAlign = 'center';
+    overlayCtx.fillText('SCANNING...', (x1 + x2) / 2, y1 - 8);
+    overlayCtx.restore();
+  }
+
+  /* -----------------------------------------------------------------------
+     Server overlay — bounding box + name/confidence from /api/recognize
+  ----------------------------------------------------------------------- */
   function syncCanvasSize() {
     if (!overlayCanvas || !video) return;
     var rect = video.getBoundingClientRect();
-    // Set the canvas *buffer* size to match the display size.
-    // Bounding-box coordinates from the server are in original-frame
-    // pixel space and are scaled separately inside drawOverlay().
     if (overlayCanvas.width  !== rect.width)  overlayCanvas.width  = rect.width;
     if (overlayCanvas.height !== rect.height) overlayCanvas.height = rect.height;
   }
 
-  /**
-   * Attempt to play an audio element.  Resets and replays from the start on
-   * every call; swallows the NotAllowedError that browsers throw when autoplay
-   * policy blocks un-interacted playback.
-   * @param {HTMLAudioElement} audioEl
-   */
-  function playAudio(audioEl) {
-    if (!audioEl) return;
-    try {
-      audioEl.currentTime = 0;
-      var playPromise = audioEl.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(function () {
-          // Autoplay blocked by browser policy — silent no-op (Req 5.9)
-        });
-      }
-    } catch (e) {
-      // Guard against environments where HTMLAudioElement.play is unavailable
-    }
-  }
+  function drawServerOverlay(faces) {
+    if (!overlayCtx || !overlayCanvas || !faces || !faces.length) return;
 
-  /* -----------------------------------------------------------------------
-     Brightness check  (Req 13.2)
-  ----------------------------------------------------------------------- */
+    var scaleX = video && video.videoWidth  ? overlayCanvas.width  / video.videoWidth  : 1;
+    var scaleY = video && video.videoHeight ? overlayCanvas.height / video.videoHeight : 1;
 
-  /**
-   * Compute the mean pixel brightness of a captured frame.
-   *
-   * ImageData stores pixels as a flat Uint8ClampedArray in [R, G, B, A, …]
-   * order.  The alpha channel (index % 4 === 3) is excluded so transparent
-   * regions (possible on some browser/OS combos) do not drag the mean down.
-   * The divisor is (pixels.length * 0.75) — three channels out of four.
-   *
-   * @param {Uint8ClampedArray} pixels  Raw pixel data from getImageData
-   * @returns {number}  Mean brightness, 0–255
-   */
-  function computeMeanBrightness(pixels) {
-    var sum = 0;
-    var len = pixels.length;
-    for (var i = 0; i < len; i++) {
-      // Skip every fourth byte (alpha channel)
-      if (i % 4 !== 3) sum += pixels[i];
-    }
-    return sum / (len * 0.75);
-  }
-
-  /**
-   * Show or hide the brightness warning banner based on the computed mean.
-   * @param {number} mean  Result of computeMeanBrightness
-   */
-  function updateBrightnessWarning(mean) {
-    if (!brightnessWarning) return;
-    brightnessWarning.style.display = (mean < BRIGHTNESS_THRESHOLD) ? 'flex' : 'none';
-  }
-
-  /* -----------------------------------------------------------------------
-     Overlay drawing  (Req 5.9, 13.3, 13.4)
-  ----------------------------------------------------------------------- */
-
-  /**
-   * Draw rounded-rectangle bounding boxes and name/confidence labels for
-   * every face returned by the server.
-   *
-   * Coordinate system:
-   *   The server returns pixel coordinates relative to the *original*
-   *   captured frame (video.videoWidth × video.videoHeight).  The overlay
-   *   canvas is CSS-scaled to fit the display area, so bounding-box coords
-   *   must be multiplied by the CSS-to-natural scale factors:
-   *
-   *     scaleX = canvas.width  / video.videoWidth
-   *     scaleY = canvas.height / video.videoHeight
-   *
-   * @param {Array<{
-   *   user_id:     number|null,
-   *   full_name:   string,
-   *   confidence:  number|null,
-   *   bounding_box: {top: number, right: number, bottom: number, left: number}
-   * }>} faces  Array of face objects from the server JSON response
-   */
-  function drawOverlay(faces) {
-    if (!overlayCtx || !overlayCanvas) return;
-
-    // Sync canvas buffer size to current video display size
-    syncCanvasSize();
-
-    // Step 1: Clear the previous frame's overlay
-    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-    if (!faces || faces.length === 0) return;
-
-    // Scale factors: original-frame pixels → canvas display pixels
-    var scaleX = (video && video.videoWidth)  ? overlayCanvas.width  / video.videoWidth  : 1;
-    var scaleY = (video && video.videoHeight) ? overlayCanvas.height / video.videoHeight : 1;
-
-    for (var i = 0; i < faces.length; i++) {
-      var face = faces[i];
-      var bb   = face.bounding_box;
-
-      // Determine colour: green for known faces, red for Unknown (Req 13.4)
-      var isKnown = (face.user_id !== null && face.user_id !== undefined);
+    faces.forEach(function(face) {
+      var bb      = face.bounding_box;
+      var isKnown = face.user_id !== null && face.user_id !== undefined;
       var color   = isKnown ? '#4CAF82' : '#e57373';
 
-      // Scale bounding box coordinates to canvas display space
-      var x      = bb.left   * scaleX;
-      var y      = bb.top    * scaleY;
-      var width  = (bb.right  - bb.left) * scaleX;
-      var height = (bb.bottom - bb.top)  * scaleY;
+      var x = bb.left  * scaleX;
+      var y = bb.top   * scaleY;
+      var w = (bb.right  - bb.left) * scaleX;
+      var h = (bb.bottom - bb.top)  * scaleY;
 
-      // Step 2: Draw rounded-rectangle bounding box
+      // Solid bounding box for matched face
       overlayCtx.save();
       overlayCtx.strokeStyle = color;
-      overlayCtx.lineWidth   = OVERLAY_LINE_WIDTH;
+      overlayCtx.lineWidth   = OVERLAY_LINE_WIDTH + 1;
+      overlayCtx.shadowColor = color;
+      overlayCtx.shadowBlur  = 12;
       overlayCtx.beginPath();
-      drawRoundedRect(overlayCtx, x, y, width, height, 8);
+      drawRoundedRect(overlayCtx, x, y, w, h, 10);
       overlayCtx.stroke();
       overlayCtx.restore();
 
-      // Step 3: Draw name label above the box (Req 13.4)
-      //   Font size: overlayFontSize (≥ 2rem per spec — typically 36 px for
-      //   projector clarity, but we honour the configured string directly so
-      //   the CSS rem unit scales with the page's root font size).
+      // Name label with backdrop
       var labelName = face.full_name || 'Unknown';
-
       overlayCtx.save();
-      overlayCtx.font         = 'bold ' + OVERLAY_FONT_SIZE + ' Arial, sans-serif';
-      overlayCtx.fillStyle    = color;
+      overlayCtx.font         = 'bold ' + OVERLAY_FONT_SIZE + ' Inter, Arial, sans-serif';
       overlayCtx.textBaseline = 'bottom';
       overlayCtx.textAlign    = 'left';
-
-      // Clamp label X so it never goes off-canvas on the left edge
-      var labelX = Math.max(x, 2);
-      // Place label just above the top of the bounding box; fall back to 4 px
-      // from the top if the box is near the top edge
-      var labelY = Math.max(y - 4, parseInt(OVERLAY_FONT_SIZE, 10) + 4);
-
-      // Draw a semi-transparent backdrop so the label is legible over any
-      // background colour (important for projector use — Req 15.1)
-      var nameMetrics = overlayCtx.measureText(labelName);
-      var nameFontPx  = parseInt(OVERLAY_FONT_SIZE, 10) || 32;
-      overlayCtx.fillStyle = 'rgba(0,0,0,0.55)';
-      overlayCtx.fillRect(labelX - 2, labelY - nameFontPx - 2,
-                          nameMetrics.width + 8, nameFontPx + 6);
-
-      overlayCtx.fillStyle = color;
-      overlayCtx.fillText(labelName, labelX, labelY);
+      var lx = Math.max(x, 2);
+      var ly = Math.max(y - 6, 36);
+      var nm = overlayCtx.measureText(labelName);
+      var fp = parseInt(OVERLAY_FONT_SIZE, 10) || 32;
+      overlayCtx.fillStyle = isKnown ? 'rgba(76,175,130,0.85)' : 'rgba(239,68,68,0.85)';
+      _roundRect(overlayCtx, lx - 4, ly - fp - 4, nm.width + 16, fp + 10, 6);
+      overlayCtx.fill();
+      overlayCtx.fillStyle = '#fff';
+      overlayCtx.fillText(labelName, lx + 4, ly);
       overlayCtx.restore();
 
-      // Step 4: Draw confidence percentage below the name, if available
+      // Confidence badge
       if (face.confidence !== null && face.confidence !== undefined) {
         var confText = face.confidence.toFixed(1) + '%';
         overlayCtx.save();
-        overlayCtx.font         = 'normal 1.2rem Arial, sans-serif';
-        overlayCtx.fillStyle    = color;
+        overlayCtx.font         = 'bold 0.9rem Inter, Arial, sans-serif';
+        overlayCtx.fillStyle    = 'rgba(0,0,0,0.7)';
         overlayCtx.textBaseline = 'top';
-        overlayCtx.textAlign    = 'left';
-
-        // Position just inside the top-left of the bounding box
-        var confX = labelX;
-        var confY = y + 6;
-
-        var confMetrics  = overlayCtx.measureText(confText);
-        var confFontPx   = 19; // approximate height for 1.2rem at 16 px/rem
-        overlayCtx.fillStyle = 'rgba(0,0,0,0.45)';
-        overlayCtx.fillRect(confX - 2, confY - 2,
-                            confMetrics.width + 8, confFontPx + 4);
-
+        overlayCtx.textAlign    = 'right';
+        var cm = overlayCtx.measureText(confText);
+        _roundRect(overlayCtx, x + w - cm.width - 14, y + 6, cm.width + 10, 22, 4);
+        overlayCtx.fill();
         overlayCtx.fillStyle = color;
-        overlayCtx.fillText(confText, confX, confY);
+        overlayCtx.fillText(confText, x + w - 4, y + 9);
         overlayCtx.restore();
       }
-    }
+    });
   }
 
-  /**
-   * Draw a rounded rectangle path onto a canvas context.
-   * Does NOT call stroke() or fill() — the caller is responsible.
-   *
-   * @param {CanvasRenderingContext2D} ctx
-   * @param {number} x       Left edge
-   * @param {number} y       Top edge
-   * @param {number} w       Width
-   * @param {number} h       Height
-   * @param {number} radius  Corner radius in px
-   */
-  function drawRoundedRect(ctx, x, y, w, h, radius) {
-    var r = Math.min(radius, Math.abs(w) / 2, Math.abs(h) / 2);
+  function _roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); return; }
     ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y,     x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x,     y + h, x,     y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x,     y,     x + r, y);
+    ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
     ctx.closePath();
   }
 
-  /* -----------------------------------------------------------------------
-     Status bar helpers  (Req 5.9, 13.3, 13.4)
-  ----------------------------------------------------------------------- */
+  function drawRoundedRect(ctx, x, y, w, h, r) {
+    _roundRect(ctx, x, y, w, h, r);
+  }
 
-  /**
-   * Update the bottom status bar to reflect the latest recognition results.
-   *
-   * Logic:
-   *  - If no faces: show idle text, hide last-name span.
-   *  - If faces present: hide idle text, show the name of the first matched
-   *    face (or "Unknown" if none matched).  Apply the .unknown CSS class
-   *    when the face is unrecognised.
-   *
-   * @param {Array} faces  Same faces array from the server response
-   */
+  /* -----------------------------------------------------------------------
+     Brightness check
+  ----------------------------------------------------------------------- */
+  function computeMeanBrightness(pixels) {
+    var sum = 0, len = pixels.length;
+    for (var i = 0; i < len; i++) { if (i % 4 !== 3) sum += pixels[i]; }
+    return sum / (len * 0.75);
+  }
+
+  /* -----------------------------------------------------------------------
+     Status bar
+  ----------------------------------------------------------------------- */
   function updateStatusBar(faces) {
-    if (!faces || faces.length === 0) {
+    if (!faces || !faces.length) {
       if (kioskIdleText)  kioskIdleText.style.display  = '';
       if (kioskLastName)  kioskLastName.style.display  = 'none';
       return;
     }
-
-    // Prefer the first matched (known) face; fall back to the first face
-    var displayFace = null;
+    var display = null;
     for (var i = 0; i < faces.length; i++) {
       if (faces[i].user_id !== null && faces[i].user_id !== undefined) {
-        displayFace = faces[i];
-        break;
+        display = faces[i]; break;
       }
     }
-    if (!displayFace) displayFace = faces[0];
-
+    if (!display) display = faces[0];
     if (kioskLastName) {
-      kioskLastName.textContent = displayFace.full_name || 'Unknown';
-      // Req 13.4 — apply .unknown class for unrecognised faces (red colour)
-      if (displayFace.user_id !== null && displayFace.user_id !== undefined) {
+      kioskLastName.textContent = display.full_name || 'Unknown';
+      if (display.user_id !== null && display.user_id !== undefined) {
         kioskLastName.classList.remove('unknown');
       } else {
         kioskLastName.classList.add('unknown');
       }
       kioskLastName.style.display = '';
     }
-
     if (kioskIdleText) kioskIdleText.style.display = 'none';
   }
 
-  /**
-   * Show or hide the "No face detected" pill based on whether the faces
-   * array is empty.  (Req 13.3)
-   *
-   * @param {Array} faces  Faces array from the server response
-   */
   function updateFaceStatus(faces) {
     if (!faceStatus) return;
-    faceStatus.style.display = (!faces || faces.length === 0) ? '' : 'none';
+    faceStatus.style.display = (!faces || !faces.length) ? '' : 'none';
   }
 
   /* -----------------------------------------------------------------------
-     Audio cues  (Req 5.9)
+     Audio
   ----------------------------------------------------------------------- */
-
-  /**
-   * Play the appropriate audio cue for the returned faces.
-   *
-   * Rules:
-   *  - If any face has user_id != null → success cue (match found).
-   *  - Else if any face is Unknown (user_id == null) → fail cue.
-   *  - If faces array is empty → no audio.
-   *  - Cues are debounced: a new cue is not triggered while audioPlaying is
-   *    true, preventing rapid overlapping sounds when the same face persists
-   *    across multiple frames.
-   *
-   * @param {Array} faces  Faces array from the server response
-   */
   function triggerAudioCue(faces) {
-    if (!faces || faces.length === 0) return;
-    if (audioPlaying) return;
-
-    var hasMatch   = false;
-    var hasUnknown = false;
-
-    for (var i = 0; i < faces.length; i++) {
-      if (faces[i].user_id !== null && faces[i].user_id !== undefined) {
-        hasMatch = true;
-      } else {
-        hasUnknown = true;
-      }
-    }
-
-    var target = null;
-    if (hasMatch) {
-      target = successAudio;
-    } else if (hasUnknown) {
-      target = failAudio;
-    }
-
+    if (!faces || !faces.length || audioPlaying) return;
+    var hasMatch = false, hasUnknown = false;
+    faces.forEach(function(f) {
+      if (f.user_id !== null && f.user_id !== undefined) hasMatch = true;
+      else hasUnknown = true;
+    });
+    var target = hasMatch ? successAudio : (hasUnknown ? failAudio : null);
     if (!target) return;
-
     audioPlaying = true;
     target.currentTime = 0;
-
-    var playPromise;
-    try {
-      playPromise = target.play();
-    } catch (e) {
-      audioPlaying = false;
-      return;
-    }
-
-    // Reset the debounce flag when playback ends or errors out
-    function resetAudioFlag() { audioPlaying = false; }
-    if (playPromise !== undefined) {
-      playPromise
-        .then(function () {
-          target.addEventListener('ended', resetAudioFlag, { once: true });
-        })
-        .catch(function () {
-          audioPlaying = false;
-        });
-    } else {
-      // Older browsers return undefined from play()
-      target.addEventListener('ended', resetAudioFlag, { once: true });
-    }
+    var p = target.play();
+    function reset() { audioPlaying = false; }
+    if (p) p.then(function() { target.addEventListener('ended', reset, { once: true }); }).catch(reset);
+    else target.addEventListener('ended', reset, { once: true });
   }
 
   /* -----------------------------------------------------------------------
-     Frame capture loop  (Req 5.3, 5.9)
+     Capture loop — 500ms
   ----------------------------------------------------------------------- */
-
-  /**
-   * Perform one capture-and-recognize tick.
-   *
-   * Steps:
-   *  1. Draw the current video frame onto a hidden canvas at full resolution.
-   *  2. Compute mean pixel brightness; update warning banner (Req 13.2).
-   *  3. Encode the canvas as JPEG (quality = CAPTURE_QUALITY).
-   *  4. POST the base64 payload to RECOGNIZE_URL.
-   *  5. On success: redraw overlay, update status bar, update face pill,
-   *     trigger audio cue; set pending = false.
-   *  6. On fetch error: log silently; set pending = false; continue loop.
-   */
   function captureTick() {
-    if (pending) return;  // skip this tick — previous request still in-flight
+    if (pending) return;
     pending = true;
 
-    // ---- Create an off-screen canvas at the video's natural resolution ----
-    var captureCanvas = document.createElement('canvas');
-    captureCanvas.width  = video.videoWidth  || 640;
-    captureCanvas.height = video.videoHeight || 480;
-    var captureCtx = captureCanvas.getContext('2d');
-    captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+    var cap = document.createElement('canvas');
+    cap.width  = video.videoWidth  || 640;
+    cap.height = video.videoHeight || 480;
+    var ctx = cap.getContext('2d');
+    ctx.drawImage(video, 0, 0, cap.width, cap.height);
 
-    // ---- Brightness check (Req 13.2) ----
-    var imageData = captureCtx.getImageData(0, 0, captureCanvas.width, captureCanvas.height);
-    var mean = computeMeanBrightness(imageData.data);
-    updateBrightnessWarning(mean);
+    var imgData = ctx.getImageData(0, 0, cap.width, cap.height);
+    var mean = computeMeanBrightness(imgData.data);
+    if (brightnessWarning) {
+      brightnessWarning.style.display = mean < BRIGHTNESS_THRESHOLD ? 'flex' : 'none';
+    }
 
-    // ---- Encode frame as base64 JPEG (Req 5.3) ----
-    var dataUrl = captureCanvas.toDataURL('image/jpeg', CAPTURE_QUALITY);
-    var b64 = dataUrl.split(',')[1];   // strip 'data:image/jpeg;base64,' prefix
+    var b64 = cap.toDataURL('image/jpeg', CAPTURE_QUALITY).split(',')[1];
 
-    // ---- POST to recognition API ----
     fetch(RECOGNIZE_URL, {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ image: b64 })
+      body: JSON.stringify({ image: b64 })
     })
-      .then(function (response) {
-        // Parse JSON regardless of HTTP status; the server always returns JSON
-        return response.json();
-      })
-      .then(function (data) {
-        var faces = (data && Array.isArray(data.faces)) ? data.faces : [];
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var faces = (data && Array.isArray(data.faces)) ? data.faces : [];
+      lastFaces = faces;  // store for mesh overlay to draw on top
 
-        // ---- Redraw overlay within the current microtask (Req 5.9) ----
-        drawOverlay(faces);
+      // If FaceMesh isn't running, draw server overlay directly
+      if (!faceMesh) {
+        syncCanvasSize();
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        drawServerOverlay(faces);
+      }
 
-        // ---- Update ancillary UI ----
-        updateFaceStatus(faces);
-        updateStatusBar(faces);
-        triggerAudioCue(faces);
-
-        pending = false;
-      })
-      .catch(function (/* err */) {
-        // Network error or JSON parse failure — clear overlay and continue
-        if (overlayCtx) {
-          overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-        }
-        updateFaceStatus([]);
-        pending = false;
-      });
+      updateFaceStatus(faces);
+      updateStatusBar(faces);
+      triggerAudioCue(faces);
+      pending = false;
+    })
+    .catch(function() {
+      lastFaces = [];
+      updateFaceStatus([]);
+      pending = false;
+    });
   }
 
   /* -----------------------------------------------------------------------
-     Camera initialisation  (Req 5.1, 5.2, 13.1)
+     Camera init
   ----------------------------------------------------------------------- */
-
-  /**
-   * Show the camera permission error panel and stop the capture loop.
-   * Called when getUserMedia() is denied or unavailable (Req 5.2, 13.1).
-   */
   function showCameraError() {
     if (cameraErrorPanel) cameraErrorPanel.style.display = 'flex';
     if (video) video.style.display = 'none';
     if (overlayCanvas) overlayCanvas.style.display = 'none';
-    // brightness-warning and face-status remain hidden (nothing to show)
   }
 
-  /**
-   * Request webcam access, wire up the video element, then start the
-   * capture interval.
-   *
-   * On permission grant (Req 5.1):
-   *  - Assign stream to video.srcObject
-   *  - Start setInterval once video metadata is available
-   *
-   * On denial (Req 5.2, 13.1):
-   *  - Show #camera-error-panel
-   *  - Do not start the interval
-   */
   function startCamera() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      // API unavailable (non-HTTPS context or very old browser) — treat as denial
-      showCameraError();
-      return;
+      showCameraError(); return;
     }
-
-    navigator.mediaDevices
-      .getUserMedia({ video: true })
-      .then(function (stream) {
+    navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } })
+      .then(function(stream) {
         video.srcObject = stream;
-        video.onloadedmetadata = function () {
+        video.onloadedmetadata = function() {
           video.play();
-          // Sync the overlay canvas to the initial video dimensions
           syncCanvasSize();
-          // ---- Start the capture loop (Req 5.3) ----
-          // setInterval fires every CAPTURE_INTERVAL_MS (1000 ms ± browser jitter).
-          // The pending flag inside captureTick ensures only one request is
-          // in-flight at a time regardless of jitter or slow server responses.
           setInterval(captureTick, CAPTURE_INTERVAL_MS);
+
+          // Init FaceMesh after camera is live
+          setTimeout(function() { initFaceMesh(); }, 500);
         };
       })
-      .catch(function () {
-        // getUserMedia denied or the camera is already in use (Req 5.2, 13.1)
-        showCameraError();
-      });
+      .catch(function() { showCameraError(); });
   }
 
-  /* -----------------------------------------------------------------------
-     Bootstrap — start everything when the DOM is fully loaded
-  ----------------------------------------------------------------------- */
-
-  // kiosk.html places this <script> at the bottom of <body>, so the DOM is
-  // already available.  A defensive DOMContentLoaded guard is added in case
-  // the script is ever moved to <head> with defer.
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startCamera);
   } else {
     startCamera();
   }
-
 })();

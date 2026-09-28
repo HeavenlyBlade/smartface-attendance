@@ -1,4 +1,4 @@
-﻿from flask import Blueprint, render_template, request, session, redirect, url_for, flash, abort
+from flask import Blueprint, render_template, request, session, redirect, url_for, flash, abort
 from functools import wraps
 from datetime import datetime, timedelta
 from werkzeug.security import check_password_hash
@@ -33,7 +33,7 @@ def role_required(*roles):
             if last_active_str:
                 try:
                     last_active = datetime.fromisoformat(last_active_str)
-                    if datetime.now() - last_active > timedelta(minutes=30):
+                    if datetime.now() - last_active > timedelta(hours=8):
                         session.clear()
                         flash('Your session has expired. Please log in again.', 'warning')
                         return redirect(url_for('auth.login'))

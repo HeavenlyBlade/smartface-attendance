@@ -24,7 +24,7 @@ load_dotenv()
 # Lower = stricter (fewer false positives, more false negatives).
 # # cosine distances occupy a narrower scale than dlib Euclidean distances.
 # Adjust via the TOLERANCE env var if recognition is too strict/lenient.
-TOLERANCE: float = float(os.getenv("TOLERANCE", 0.40))
+TOLERANCE: float = float(os.getenv("TOLERANCE", 0.45))
 
 # ---------------------------------------------------------------------------
 # Attendance rules

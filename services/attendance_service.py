@@ -52,7 +52,7 @@ last_seen_dict: dict[int, datetime] = {}
 # Private helpers
 # ---------------------------------------------------------------------------
 
-_DEBOUNCE_SECONDS = 60
+_DEBOUNCE_SECONDS = 30
 
 
 def _is_debounce_elapsed(user_id: int) -> bool:

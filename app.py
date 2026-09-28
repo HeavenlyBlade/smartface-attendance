@@ -84,7 +84,7 @@ def create_app() -> Flask:
     # Sessions expire after 30 minutes of inactivity.
     # SESSION_PERMANENT=True makes Flask honour PERMANENT_SESSION_LIFETIME.
     app.config["SESSION_PERMANENT"] = True
-    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
+    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
 
     # ------------------------------------------------------------------ #
     # Blueprint registration                                               #

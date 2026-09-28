@@ -380,10 +380,14 @@
     overlayFontSize:     '2rem',   /* label font size drawn on canvas — ≥ 2rem per spec */
     overlayLineWidth:    3,        /* bounding-box stroke width in pixels */
     captureQuality:      0.7,      /* JPEG quality for toDataURL — Req 5.3 */
-    captureIntervalMs:   1000      /* frame capture interval — Req 5.3 */
+    captureIntervalMs: 500      /* frame capture interval — Req 5.3 */
   };
 </script>
 
-{# camera.js — frame capture loop, overlay drawing, audio cues, brightness check #}
+{# MediaPipe FaceMesh — facial landmark scanner overlay #}
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+{# camera.js — frame capture loop, overlay drawing, face mesh, audio cues #}
 <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
 {% endblock %}
