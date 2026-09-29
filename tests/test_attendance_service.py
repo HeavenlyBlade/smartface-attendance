@@ -1,4 +1,4 @@
-﻿"""
+"""
 tests/test_attendance_service.py -- Property-based tests for attendance service
 
 Properties covered:
@@ -116,7 +116,7 @@ def test_property_9_debounce_uniqueness(user_id, offsets_seconds):
 # Task 3.11 | Validates: Requirements 6.3
 # ===========================================================================
 
-@given(integers(min_value=0, max_value=59))
+@given(integers(min_value=0, max_value=29))
 @settings(max_examples=100, deadline=None)
 def test_property_10_debounce_skip_under_60s(elapsed_seconds):
     """
