@@ -352,12 +352,10 @@
    preload="auto" — buffer the files on page load for instant playback.
 ================================================================ #}
 <audio id="success-audio" preload="auto" aria-hidden="true">
-  <source src="{{ url_for('static', filename='audio/success.mp3') }}" type="audio/mpeg" />
-  <source src="{{ url_for('static', filename='audio/success.ogg') }}" type="audio/ogg" />
+  <source src="{{ url_for('static', filename='audio/success.wav') }}" type="audio/wav" />
 </audio>
 <audio id="fail-audio" preload="auto" aria-hidden="true">
-  <source src="{{ url_for('static', filename='audio/fail.mp3') }}" type="audio/mpeg" />
-  <source src="{{ url_for('static', filename='audio/fail.ogg') }}" type="audio/ogg" />
+  <source src="{{ url_for('static', filename='audio/fail.wav') }}" type="audio/wav" />
 </audio>
 {% endblock %}
 

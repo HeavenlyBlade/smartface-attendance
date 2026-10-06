@@ -9,10 +9,9 @@
   <meta name="description" content="SmartFace — Real-Time Facial Recognition Attendance System, St. Anne College Lucena, Inc." />
   <title>{% block title %}SmartFace{% endblock %} — SACLI</title>
 
-  <!-- Favicon (uses logo if present, silent otherwise) -->
-  <link rel="icon" type="image/png"
-        href="{{ url_for('static', filename='img/sacli_logo.png') }}"
-        onerror="this.href='data:,'">
+  <!-- Favicon -->
+  <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.ico') }}" />
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/sacli_logo.png') }}" />
 
   <!-- SACLI stylesheet -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
@@ -199,12 +198,10 @@
        Source files are optional; audio is silent if absent.
        ========================================================= -->
   <audio id="success-sound" preload="auto" aria-hidden="true">
-    <source src="{{ url_for('static', filename='audio/success.mp3') }}" type="audio/mpeg" />
-    <source src="{{ url_for('static', filename='audio/success.ogg') }}" type="audio/ogg" />
+    <source src="{{ url_for('static', filename='audio/success.wav') }}" type="audio/wav" />
   </audio>
   <audio id="fail-sound" preload="auto" aria-hidden="true">
-    <source src="{{ url_for('static', filename='audio/fail.mp3') }}" type="audio/mpeg" />
-    <source src="{{ url_for('static', filename='audio/fail.ogg') }}" type="audio/ogg" />
+    <source src="{{ url_for('static', filename='audio/fail.wav') }}" type="audio/wav" />
   </audio>
 
   <!-- =========================================================
