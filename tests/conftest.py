@@ -14,8 +14,15 @@ Profile "smartface" is registered and loaded globally:
     max_examples=100, deadline=5000 ms
 """
 
+import os
 import sys
 from pathlib import Path
+
+# H1 fix: signal to models/db.py that we are in test mode so it uses
+# TEST_DATABASE_URL (or the DB_* vars) instead of the production DATABASE_URL.
+# Set TEST_DATABASE_URL env var pointing at a real PostgreSQL test database
+# to run integration tests without mocks.
+os.environ.setdefault("TESTING", "true")
 
 import pytest
 from hypothesis import settings
@@ -57,7 +64,6 @@ def test_app():
             response = test_app.get('/login')
             assert response.status_code == 200
     """
-    import os
     # Tell config to use the test database.  This must happen before create_app
     # imports config, so we set the env var directly.
     os.environ.setdefault("DB_NAME", "smartface_test_db")

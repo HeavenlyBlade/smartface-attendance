@@ -17,12 +17,24 @@ def _get_pool():
     with _pool_lock:
         if _pool is not None:
             return _pool
-        dsn = os.environ.get("DATABASE_URL")
-        if not dsn:
-            import config
-            dsn = (f"host={config.DB_HOST} port={config.DB_PORT} "
-                   f"dbname={config.DB_NAME} user={config.DB_USER} "
-                   f"password={config.DB_PASS} sslmode=require")
+        # H1 fix: when running under pytest (TESTING=true), prefer TEST_DATABASE_URL
+        # so tests never accidentally connect to the production Supabase instance.
+        if os.environ.get("TESTING", "").lower() == "true":
+            dsn = os.environ.get("TEST_DATABASE_URL")
+            if not dsn:
+                # Fall back to individual DB_* vars (existing path); allows the
+                # test DB to be specified via DB_NAME=smartface_test_db etc.
+                import config
+                dsn = (f"host={config.DB_HOST} port={config.DB_PORT} "
+                       f"dbname={config.DB_NAME} user={config.DB_USER} "
+                       f"password={config.DB_PASS} sslmode=require")
+        else:
+            dsn = os.environ.get("DATABASE_URL")
+            if not dsn:
+                import config
+                dsn = (f"host={config.DB_HOST} port={config.DB_PORT} "
+                       f"dbname={config.DB_NAME} user={config.DB_USER} "
+                       f"password={config.DB_PASS} sslmode=require")
         logger.info("Initialising PostgreSQL connection pool")
         _pool = psycopg2.pool.ThreadedConnectionPool(1, 5, dsn)
     return _pool

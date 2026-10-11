@@ -47,12 +47,22 @@ SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me-in-production")
 # catches mis-configured deploys before they serve any requests.
 _debug_mode = os.getenv("FLASK_DEBUG", "0") in ("1", "true", "True")
 _test_mode = os.getenv("TESTING", "0") in ("1", "true", "True")
+DEBUG: bool = _debug_mode
+
 if SECRET_KEY == "change-me-in-production" and not _debug_mode and not _test_mode:
     raise RuntimeError(
         "SECRET_KEY is set to the insecure default 'change-me-in-production'. "
         "Set a strong SECRET_KEY environment variable before running in production. "
         "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
     )
+
+# CSRF protection (Flask-WTF).
+# Disabled automatically during test runs so pytest can POST without tokens.
+WTF_CSRF_ENABLED: bool = not _test_mode
+
+# Secure the session cookie in production; allow plain HTTP in dev/test.
+SESSION_COOKIE_SECURE: bool = not _debug_mode and not _test_mode
+SESSION_COOKIE_SAMESITE: str = "Lax"
 
 # ---------------------------------------------------------------------------
 # Database (MySQL via mysql-connector-python)
