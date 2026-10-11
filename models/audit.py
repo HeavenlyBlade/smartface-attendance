@@ -51,6 +51,7 @@ ACTION_ENROLL            = 'user_enrolled'
 ACTION_MANUAL_OVERRIDE   = 'manual_attendance_override'
 ACTION_DEACTIVATE        = 'user_deactivated'
 ACTION_BIOMETRIC_DELETE  = 'biometric_data_deleted'
+ACTION_USER_DELETED      = 'user_deleted'
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -144,7 +145,7 @@ def list_audit(
 
     Raises
     ------
-    mysql.connector.Error
+    psycopg2.Error
         Propagated from ``execute_query`` so the caller can handle DB
         unavailability (e.g., return 503).  Unlike ``write_audit``, this
         function does not swallow exceptions — the caller needs the data.

@@ -1,3 +1,5 @@
+> **Note:** This spec was written for MySQL. The system has been migrated to PostgreSQL. See `database/schema.sql` for the current schema.
+
 # SmartFace — Project Specification for Kiro
 
 **Project:** SmartFace: A Real-Time Face Recognition Web App for Automated Attendance Monitoring

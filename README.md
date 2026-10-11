@@ -10,7 +10,7 @@ SmartFace is a Flask web application that identifies registered users via a live
 | Requirement | Notes |
 |---|---|
 | **Python 3.11** | 3.12+ is not supported — `face_recognition` requires 3.11 |
-| **MySQL Server 8.0** | Must be running before starting the app |
+| **PostgreSQL** | Any 14+ instance (local or cloud). A Supabase project also works — set `DATABASE_URL` in `.env` |
 | **pip** | Comes with Python 3.11 |
 
 ---
@@ -76,8 +76,7 @@ copy .env.example .env
 Edit `.env` and set at minimum:
 ```
 SECRET_KEY=your-random-secret-here
-DB_PASS=your-mysql-root-password
-DB_NAME=smartface_db
+DATABASE_URL=postgresql://user:password@host:5432/smartface_db
 ```
 Generate a secret key:
 ```bash
@@ -86,8 +85,11 @@ py -3.11 -c "import secrets; print(secrets.token_hex(32))"
 
 ### 4. Initialise the database
 ```bash
-# Create the database and tables
-mysql -u root -p < database/schema.sql
+# Create tables from the PostgreSQL schema
+psql $DATABASE_URL < database/schema.sql
+
+# Apply the lockout migration (adds login_attempts + lockout_until columns)
+psql $DATABASE_URL < database/migration_add_lockout.sql
 ```
 
 ### 5. Seed demo data
@@ -128,7 +130,15 @@ Then uncomment this line in `app.py`:
 ```bash
 py -3.11 -m pytest tests/ --tb=short -q
 ```
-All 12 correctness properties (Hypothesis) + unit tests should pass.
+All correctness properties (Hypothesis) + unit tests should pass with mocked DB.
+
+---
+
+## Security
+
+- **CSRF protection**: Flask-WTF `CSRFProtect` guards all state-changing HTML form POSTs. JSON API endpoints (`/api/*`) are exempt.
+- **Server-side login lockout**: Failed login attempts are tracked in the database (`login_attempts`, `lockout_until` columns). Clearing the session cookie does not reset the counter. Lockout escalates: 3 attempts = 30 s, 4 = 40 s, and so on.
+- **`SECRET_KEY` must be set**: The app refuses to start in production if `SECRET_KEY` is still the default `"change-me-in-production"`. Generate one with `python -c "import secrets; print(secrets.token_hex(32))"`.
 
 ---
 
@@ -144,8 +154,8 @@ All 12 correctness properties (Hypothesis) + unit tests should pass.
 
 ## Architecture Notes
 
-- **Recognition pipeline:** Browser captures JPEG frames via `getUserMedia` every 1 s, POSTs base64 to `/api/recognize`. Server decodes → downscales 0.25× → detects faces → compares against in-memory encoding cache → logs attendance.
-- **Debounce:** At most one DB write per user per 60 seconds to prevent duplicate `time_out` spam.
+- **Recognition pipeline:** Browser captures JPEG frames via `getUserMedia` every 1 s, POSTs base64 to `/api/recognize`. Server decodes → downscales 0.5× → detects faces → compares against in-memory encoding cache → logs attendance.
+- **Debounce:** At most one DB write per user per 30 seconds to prevent duplicate `time_out` spam.
 - **Liveness hook:** A comment in `services/face_service.py` marks the exact line where a liveness check (blink / head-movement detection) would be inserted — currently deferred as a future enhancement.
 - **RA 10173 compliance:** `consent_given=1` must be set before any face encoding is stored. Validated server-side regardless of front-end state.
 - **TOLERANCE:** Default `0.45` (stricter than `face_recognition`'s `0.6` default). Adjustable in `.env`.
@@ -158,11 +168,7 @@ All 12 correctness properties (Hypothesis) + unit tests should pass.
 | Variable | Default | Description |
 |---|---|---|
 | `SECRET_KEY` | *(required)* | Flask session signing key |
-| `DB_HOST` | `localhost` | MySQL host |
-| `DB_PORT` | `3306` | MySQL port |
-| `DB_USER` | `root` | MySQL user |
-| `DB_PASS` | *(required)* | MySQL password |
-| `DB_NAME` | `smartface_db` | Database name |
+| `DATABASE_URL` | *(required)* | Full PostgreSQL DSN (e.g. `postgresql://user:pass@host:5432/dbname`) |
 | `TOLERANCE` | `0.45` | Face match distance threshold |
 | `LATE_TIME` | `08:00:00` | Cutoff time for "present" vs "late" |
 | `BRIGHTNESS_THRESHOLD` | `50` | Low-light warning threshold (0–255) |
@@ -170,5 +176,5 @@ All 12 correctness properties (Hypothesis) + unit tests should pass.
 
 ---
 
-*Built as a capstone project — Python 3.11, Flask, dlib/face_recognition, MySQL*
+*Built as a capstone project — Python 3.11, Flask, dlib/face_recognition, PostgreSQL*
 

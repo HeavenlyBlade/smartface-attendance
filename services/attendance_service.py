@@ -9,8 +9,8 @@ Implements the attendance logging pipeline as specified in Requirements 6.1–6.
 
   - _is_debounce_elapsed(user_id) → bool
         Return True when no entry exists for user_id (first recognition today)
-        OR elapsed time since the last logged entry is ≥ 60 seconds.
-        Return False when elapsed < 60 seconds → caller must skip the DB write.
+        OR elapsed time since the last logged entry is ≥ 30 seconds.
+        Return False when elapsed < 30 seconds → caller must skip the DB write.
 
   - _determine_status(time_in: datetime) → str
         Compare the wall-clock time portion of time_in against config.LATE_TIME
@@ -19,8 +19,8 @@ Implements the attendance logging pipeline as specified in Requirements 6.1–6.
 
   - log_attendance(user_id, confidence) → dict
         Two-guard pattern:
-          Guard 1 — debounce: skip if elapsed < 60 s.
-          Guard 2 — DB write: INSERT … ON DUPLICATE KEY UPDATE (Req 6.4).
+          Guard 1 — debounce: skip if elapsed < 30 s.
+          Guard 2 — DB write: INSERT … ON CONFLICT (user_id, date) DO UPDATE (Req 6.4).
         On success: update last_seen_dict.
         On DB failure: leave last_seen_dict unchanged (Req 6.7).
 
@@ -32,7 +32,6 @@ from datetime import datetime, time as dt_time
 
 import config
 from models.db import execute_query
-MySQLError = Exception  # psycopg2 migration
 
 # ---------------------------------------------------------------------------
 # Module-level logger
@@ -63,10 +62,10 @@ def _is_debounce_elapsed(user_id: int) -> bool:
       1. user_id has no entry in last_seen_dict  — this is the first
          recognition ever (or first recognition today), so we allow it.
          (Requirement 6.8)
-      2. elapsed time since last_seen_dict[user_id] is ≥ 60 seconds.
+      2. elapsed time since last_seen_dict[user_id] is ≥ 30 seconds.
          (Requirement 6.2)
 
-    Return False when elapsed < 60 seconds (Requirement 6.3).
+    Return False when elapsed < 30 seconds (Requirement 6.3).
     """
     if user_id not in last_seen_dict:
         return True  # No prior entry → treat as elapsed (Req 6.8)
@@ -106,7 +105,7 @@ def log_attendance(user_id: int, confidence: float) -> dict:
     Attempt to log (or update) an attendance record for user_id.
 
     Guard 1 — Debounce check (Requirement 6.3, 6.8):
-        If elapsed time since last_seen_dict[user_id] is < 60 seconds,
+        If elapsed time since last_seen_dict[user_id] is < 30 seconds,
         skip the DB operation and return::
 
             {"logged": False, "reason": "debounce"}
@@ -192,7 +191,7 @@ def log_attendance(user_id: int, confidence: float) -> dict:
             "log_attendance: recorded user_id=%d date=%s time_in=%s status=%s conf=%.2f",
             user_id, today, time_in_str, status, confidence,
         )
-    except MySQLError as exc:
+    except Exception as exc:
         # Requirement 6.7: leave last_seen_dict unchanged on failure
         logger.error(
             "log_attendance: DB error for user_id=%d — %s", user_id, exc

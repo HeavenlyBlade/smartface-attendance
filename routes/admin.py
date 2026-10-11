@@ -283,7 +283,7 @@ def delete_user_route(user_id: int):
     and raw JPEG samples. Writes an audit log entry.
     """
     import shutil
-    from models.audit import write_audit, ACTION_DEACTIVATE
+    from models.audit import write_audit, ACTION_USER_DELETED
 
     admin_id = session["user_id"]
 
@@ -315,7 +315,7 @@ def delete_user_route(user_id: int):
         # Audit log
         write_audit(
             user_id=admin_id,
-            action="user_deleted",
+            action=ACTION_USER_DELETED,
             details=f"Admin {admin_id} permanently deleted user id={user_id} ({target['full_name']}, {target['email']})",
             ip_address=request.remote_addr,
         )
@@ -365,6 +365,7 @@ def audit_log():
         ACTION_MANUAL_OVERRIDE,
         ACTION_DEACTIVATE,
         ACTION_BIOMETRIC_DELETE,
+        ACTION_USER_DELETED,
     )
     action_choices = [
         (ACTION_LOGIN,           "User Login"),
@@ -373,6 +374,7 @@ def audit_log():
         (ACTION_MANUAL_OVERRIDE, "Manual Override"),
         (ACTION_DEACTIVATE,      "User Deactivated"),
         (ACTION_BIOMETRIC_DELETE,"Biometric Deleted"),
+        (ACTION_USER_DELETED,    "User Deleted"),
     ]
 
     return render_template(

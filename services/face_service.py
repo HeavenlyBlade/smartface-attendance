@@ -179,7 +179,8 @@ def recognize_frame(image_b64: str) -> list[dict]:
     if frame is None:
         raise ValueError("Could not decode image")
 
-    # Step 2: Downscale 0.25x -- ~2x speedup, non-negotiable for usable framerate
+    # Step 2: Downscale 0.5x -- ~2x speedup, non-negotiable for usable framerate
+    # Note: using Hog model (faster, less accurate). CNN model requires GPU or significant CPU.
     small = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
 
     # Step 3: BGR (OpenCV default) -> RGB (face_recognition expects RGB input)

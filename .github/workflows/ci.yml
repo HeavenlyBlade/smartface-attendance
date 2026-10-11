@@ -1,0 +1,61 @@
+name: SmartFace CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      # Tell models/db.py to use the test path (H1 fix)
+      TESTING: "true"
+      # No real DB in CI — all DB calls are mocked in unit tests
+      TEST_DATABASE_URL: "postgresql://ci_user:ci_pass@localhost:5432/smartface_ci"
+      SECRET_KEY: "ci-test-secret-key-not-for-production"
+      FLASK_DEBUG: "0"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+        # Note: face_recognition and dlib are NOT in requirements.txt (installed
+        # manually for local use only — see README). services/face_service.py
+        # already handles their absence with a try/except ImportError guard and
+        # sets FACE_RECOGNITION_AVAILABLE = False, so all CI tests still pass.
+
+      - name: Syntax check — compile all Python files
+        run: |
+          python -m py_compile $(find . -name '*.py' \
+            -not -path './venv/*' \
+            -not -path './__pycache__/*' \
+            -not -path './.git/*')
+
+      - name: Run test suite
+        run: python -m pytest tests/ --tb=short -q --junitxml=test-results/junit.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 14
