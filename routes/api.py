@@ -33,7 +33,7 @@ import time
 
 import config
 from models.audit import ACTION_ENROLL, write_audit
-from models.db import execute_query, get_connection
+from models.db import execute_query, get_connection, release_connection
 from routes.auth import role_required
 from services import attendance_service, face_service
 from services.face_service import (
@@ -173,6 +173,7 @@ def enroll():
     password_hash = generate_password_hash(initial_password)
 
     conn = None
+    cursor = None
     new_user_id: int | None = None
 
     try:
@@ -262,7 +263,7 @@ def enroll():
                 cursor.close()
             except Exception:
                 pass
-            conn.close()
+            release_connection(conn)
 
     # ------------------------------------------------------------------
     # 7. Post-commit: write audit log, reload encoding cache

@@ -112,15 +112,15 @@ def log_attendance(user_id: int, confidence: float) -> dict:
             {"logged": False, "reason": "debounce"}
 
     Guard 2 — DB write (Requirements 6.1, 6.2, 6.4):
-        Execute a single ``INSERT … ON DUPLICATE KEY UPDATE`` statement.
-        This enforces the ``UNIQUE KEY uniq_user_day (user_id, date)``
+        Execute a single ``INSERT … ON CONFLICT (user_id, date) DO UPDATE SET``
+        statement.  This enforces the ``UNIQUE (user_id, date)``
         constraint at the DB level so no duplicate daily rows can ever exist,
         even under concurrent requests.
 
         First recognition (INSERT path):
             - Sets time_in to now, status determined by _determine_status(),
               confidence to the supplied value.
-        Subsequent recognitions on the same date (UPDATE path):
+        Subsequent recognitions on the same date (CONFLICT → UPDATE path):
             - Updates time_out to now, refreshes confidence.
 
     On DB success (Requirements 6.5):
@@ -163,26 +163,26 @@ def log_attendance(user_id: int, confidence: float) -> dict:
     status = _determine_status(now)
 
     # ------------------------------------------------------------------
-    # Guard 2: DB write — INSERT … ON DUPLICATE KEY UPDATE
+    # Guard 2: DB write — INSERT … ON CONFLICT (user_id, date) DO UPDATE
     #
     # On first recognition of the day (INSERT path):
     #   Sets time_in, status, confidence.
     #   time_out is left NULL (default from schema).
     #
-    # On subsequent recognitions same day (DUPLICATE KEY → UPDATE path):
+    # On subsequent recognitions same day (CONFLICT → UPDATE path):
     #   Updates time_out to now and refreshes confidence.
     #   time_in and status are intentionally preserved from the first
     #   insert so status is always derived from actual arrival time.
     #
-    # The VALUES(col) reference in the UPDATE clause uses the value that
-    # was attempted for the INSERT — i.e. the current time / confidence.
+    # EXCLUDED.col references the value that was proposed in the INSERT —
+    # i.e. the current time / confidence.  PostgreSQL ON CONFLICT syntax.
     # ------------------------------------------------------------------
     sql = (
         "INSERT INTO attendance (user_id, date, time_in, status, confidence) "
         "VALUES (%s, %s, %s, %s, %s) "
-        "ON DUPLICATE KEY UPDATE "
-        "time_out = VALUES(time_in), "
-        "confidence = VALUES(confidence)"
+        "ON CONFLICT (user_id, date) DO UPDATE SET "
+        "time_out = EXCLUDED.time_in, "
+        "confidence = EXCLUDED.confidence"
     )
     params = (user_id, today, time_in_str, status, confidence)
 

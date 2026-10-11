@@ -16,3 +16,7 @@ services:
         value: 50
       - key: UPLOAD_DIR
         value: uploads/face_samples
+      - key: SECRET_KEY
+        sync: false   # must be set manually in the Render dashboard — never commit the real value
+      - key: DATABASE_URL
+        sync: false   # must be set manually in the Render dashboard

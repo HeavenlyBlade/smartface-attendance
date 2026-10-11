@@ -266,10 +266,10 @@ def seed() -> None:
                 INSERT INTO attendance
                     (user_id, date, time_in, time_out, status, confidence, marked_by)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                    time_in    = VALUES(time_in),
-                    status     = VALUES(status),
-                    confidence = VALUES(confidence)
+                ON CONFLICT (user_id, date) DO UPDATE SET
+                    time_in    = EXCLUDED.time_in,
+                    status     = EXCLUDED.status,
+                    confidence = EXCLUDED.confidence
             """
             cursor.executemany(att_sql, attendance_rows)
             print(f"      ✓ Inserted {len(attendance_rows)} attendance row(s):")

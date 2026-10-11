@@ -42,6 +42,18 @@ LATE_TIME: str = os.getenv("LATE_TIME", "08:00:00")
 # Generate one with: python -c "import secrets; print(secrets.token_hex(32))"
 SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me-in-production")
 
+# Guard: fail fast in production if SECRET_KEY was never changed.
+# DEBUG and TESTING env vars are both falsy in production, so this check
+# catches mis-configured deploys before they serve any requests.
+_debug_mode = os.getenv("FLASK_DEBUG", "0") in ("1", "true", "True")
+_test_mode = os.getenv("TESTING", "0") in ("1", "true", "True")
+if SECRET_KEY == "change-me-in-production" and not _debug_mode and not _test_mode:
+    raise RuntimeError(
+        "SECRET_KEY is set to the insecure default 'change-me-in-production'. "
+        "Set a strong SECRET_KEY environment variable before running in production. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+    )
+
 # ---------------------------------------------------------------------------
 # Database (MySQL via mysql-connector-python)
 # ---------------------------------------------------------------------------

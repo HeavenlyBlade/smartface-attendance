@@ -1,4 +1,7 @@
-﻿[phases.setup]
+﻿# SECRET_KEY and DATABASE_URL must be set as secret environment variables
+# in the Nixpacks / Railway config — never put real values in this file.
+
+[phases.setup]
 nixPkgs = ["python311", "cmake", "gcc", "libstdcxx5", "zlib"]
 aptPkgs = ["build-essential", "cmake", "libopenblas-dev", "liblapack-dev", "libx11-dev", "libgtk-3-dev"]
 

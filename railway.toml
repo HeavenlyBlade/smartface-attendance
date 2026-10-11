@@ -1,6 +1,10 @@
 ﻿[build]
 builder = "nixpacks"
 
+# SECRET_KEY and DATABASE_URL must be set as secret environment variables
+# in the Railway dashboard. Never commit real values to this file.
+# See: https://docs.railway.app/guides/variables
+
 [deploy]
 startCommand = "python serve.py"
 healthcheckPath = "/login"
