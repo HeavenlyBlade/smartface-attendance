@@ -1,0 +1,402 @@
+# SmartFace — Pre-Defense Test Run Checklist
+# =============================================
+# Run through every item below before the thesis defense.
+# Tick [x] when passed, mark [F] if failed with notes.
+# Last updated: 2026-11-05
+# =============================================
+
+
+## ─────────────────────────────────────────
+## 0. ENVIRONMENT SETUP
+## ─────────────────────────────────────────
+
+[ ] 0.1  .env file exists and has no BOM
+         → Open .env in VS Code — should NOT say "UTF-8 with BOM" in bottom-right
+         → If it does: resave as UTF-8 (not UTF-8 BOM)
+
+[ ] 0.2  DATABASE_URL in .env points to Supabase with correct password
+         → Run: py -3.11 -c "from dotenv import load_dotenv; load_dotenv(); import os; print(os.environ.get('DATABASE_URL','NOT SET')[:60])"
+         → Should show: postgresql://postgres.httvteodlkgzuzmqhcdl:...
+
+[ ] 0.3  Supabase database is reachable
+         → Run: py -3.11 -c "from dotenv import load_dotenv; load_dotenv(); from models.db import execute_query; r=execute_query('SELECT COUNT(*) AS c FROM users',fetchone=True); print('Users in DB:',r['c'])"
+         → Should print: Users in DB: <number>
+
+[ ] 0.4  face_recognition is installed
+         → Run: py -3.11 -c "import face_recognition; print('OK')"
+         → Should print: OK
+
+[ ] 0.5  Shape predictor file exists (needed for liveness)
+         → Run: py -3.11 -c "import os; print(os.path.getsize('models/shape_predictor_68_face_landmarks.dat'), 'bytes')"
+         → Should show ~99MB
+
+[ ] 0.6  reportlab installed (needed for PDF export)
+         → Run: py -3.11 -c "import reportlab; print('reportlab', reportlab.Version)"
+         → Should print: reportlab 4.2.2
+
+
+## ─────────────────────────────────────────
+## 1. SERVER STARTUP
+## ─────────────────────────────────────────
+
+[ ] 1.1  Server starts without errors
+         → Run: py -3.11 serve.py
+         → Should see: SmartFace | Production | Waitress WSGI
+         → Should see: Local : http://localhost:5000
+         → Should NOT see: SyntaxError / ImportError / ModuleNotFoundError
+
+[ ] 1.2  Face encoding cache loads at startup
+         → Look for: load_known_faces: loaded N encoding(s)
+         → If 0: you need to re-enroll (see Section 5)
+
+[ ] 1.3  Shape predictor loads for liveness
+         → Look for: Shape predictor loaded — liveness detection active
+
+[ ] 1.4  LAN access works (for demo projector)
+         → Run with SSL: py -3.11 serve.py --ssl
+         → Open https://192.168.x.x:5000 on another device
+         → Accept the self-signed cert warning
+         → Should reach the login page
+
+
+## ─────────────────────────────────────────
+## 2. AUTHENTICATION
+## ─────────────────────────────────────────
+
+[ ] 2.1  Login with valid credentials
+         → Email: admin@sacli.edu.ph
+         → Password: Admin123
+         → Should redirect to /dashboard
+
+[ ] 2.2  Login with wrong password shows generic error
+         → Try: admin@sacli.edu.ph / wrongpass
+         → Should see: "Invalid credentials." (NOT "wrong password" or "wrong email")
+
+[ ] 2.3  Progressive lockout works
+         → Enter wrong password 3x
+         → Should see: "Locked for 30 second(s)."
+         → Wait 30s, try again — should work
+
+[ ] 2.4  Logout shows confirmation modal
+         → Click Logout in navbar
+         → Should see: "Sign out?" modal with Cancel and "Yes, sign out"
+         → Click Cancel → stays logged in ✓
+         → Click "Yes, sign out" → redirects to login ✓
+
+[ ] 2.5  Session persists for 8 hours
+         → Log in, leave browser idle 30 min
+         → Refresh — should still be logged in (not expired)
+
+
+## ─────────────────────────────────────────
+## 3. ENROLLMENT (/enroll)
+## ─────────────────────────────────────────
+
+[ ] 3.1  Webcam preview loads
+         → Go to /enroll
+         → Should see live camera feed
+         → Status pill should show: "Position face in frame"
+
+[ ] 3.2  Face detection overlay appears
+         → Move face into frame
+         → Should see: green corner brackets, dotted face oval, golden eye/lip contours
+         → Status pill should change to: "Face detected ✓"
+         → Capture button should pulse green
+
+[ ] 3.3  Blur check rejects shaky/blurry samples
+         → Cover lens partially or move fast and click Capture
+         → Should see error: "image too blurry"
+
+[ ] 3.4  Face-size check rejects small faces
+         → Stand far from camera and click Capture
+         → Should see error: "face too small — move closer"
+
+[ ] 3.5  Successful enrollment with 5 good samples
+         → Fill form: Full Name, Email, ID Number, Department, Role
+         → Capture 5 samples (face filling 50-70% of frame, good light)
+         → Check RA 10173 consent checkbox
+         → Click "Enroll User"
+         → Should see success toast
+
+[ ] 3.6  Duplicate email rejected
+         → Try enrolling with same email again
+         → Should see: "A user with that email already exists."
+
+
+## ─────────────────────────────────────────
+## 4. KIOSK (/kiosk)
+## ─────────────────────────────────────────
+
+[ ] 4.1  Kiosk fits screen (no scroll)
+         → Open /kiosk
+         → Video should fill available space with NO vertical scrollbar
+
+[ ] 4.2  Face mesh scanner overlay
+         → Look at camera
+         → Should see: animated scan line, corner brackets, face oval, eye contours
+
+[ ] 4.3  Liveness — blink required before match
+         → Stand in front of kiosk WITHOUT blinking
+         → Face should be detected (brackets appear) but NOT matched yet
+         → Blink naturally
+         → Should immediately show your name with confidence %
+
+[ ] 4.4  Unknown face shows red label
+         → Have someone not enrolled stand in front of kiosk
+         → Should show: red "Unknown" label
+
+[ ] 4.5  Attendance record created in DB
+         → After being recognized, go to /dashboard
+         → Your name should appear in "Today's Attendance" table
+
+[ ] 4.6  Duplicate attendance prevented (debounce)
+         → Walk away and come back within 30 seconds
+         → Should be recognized but attendance time_out updates, NOT a new row
+         → Wait 30s, walk past again → time_out updates
+
+[ ] 4.7  Brightness warning
+         → Cover camera or dim lights severely
+         → Should see orange banner: "Low lighting detected"
+
+[ ] 4.8  Success audio plays on match
+         → Should hear ascending chime when face is matched
+
+[ ] 4.9  Fail audio plays on Unknown
+         → Unknown person should trigger lower tone
+
+
+## ─────────────────────────────────────────
+## 5. DASHBOARD (/dashboard)
+## ─────────────────────────────────────────
+
+[ ] 5.1  All 4 summary cards show correct counts
+         → Present Today, Late Today, Absent Today, Registered Users
+         → Absent = Registered - Present - Late
+
+[ ] 5.2  7-day bar chart loads
+         → Should see a bar chart with last 7 days
+         → Green = Present, Gold = Late
+
+[ ] 5.3  Today's donut chart loads
+         → Should show Present / Late / Absent proportions with percentages
+
+[ ] 5.4  Attendance table live-updates every 3 seconds
+         → Keep dashboard open while someone gets recognized at kiosk
+         → Table should update without page refresh
+
+[ ] 5.5  Confidence color coding in table
+         → ≥ 90% → green bar + green text
+         → 70-89% → gold bar + gold text
+         → < 70% → red bar + red text
+
+[ ] 5.6  Name avatar shows first letter
+         → Each row should have a circular green avatar with first letter of name
+
+
+## ─────────────────────────────────────────
+## 6. USER MANAGEMENT (/users)
+## ─────────────────────────────────────────
+
+[ ] 6.1  Encoding count badge shows per user
+         → Users with encodings: green "✓ N samples"
+         → Users without encodings: red "✗ Not enrolled"
+
+[ ] 6.2  Search bar filters users
+         → Type a name fragment → table filters in real time
+         → Clear button resets search
+
+[ ] 6.3  Edit user opens pre-filled modal
+         → Click ✏ Edit
+         → Modal should open with current values
+         → Change department → Save → should update
+
+[ ] 6.4  Deactivate shows confirmation
+         → Click 🔒 Deactivate
+         → Should show confirmation modal with user name
+         → Cancel → nothing happens
+         → Confirm → user marked Inactive
+
+[ ] 6.5  Re-enroll deletes encodings
+         → Click 🔄 Re-enroll
+         → Should show confirmation modal
+         → After confirm: user's "✓ N samples" badge should become "✗ Not enrolled"
+         → Then enroll them again via /enroll
+
+[ ] 6.6  Delete User (permanent) shows confirmation
+         → Click 🗑 Delete
+         → Should show red confirmation modal
+         → "Yes, Delete Permanently" removes user from list and DB
+
+
+## ─────────────────────────────────────────
+## 7. REPORTS (/reports)
+## ─────────────────────────────────────────
+
+[ ] 7.1  Filter by date range works
+         → Set start date and end date → Filter
+         → Results should only show records in that range
+
+[ ] 7.2  Filter by role works
+         → Select "Student" → Filter
+         → All rows should have role = Student
+
+[ ] 7.3  Start > End date shows error
+         → Set start date AFTER end date → click Filter
+         → Should show: "Start date cannot be after end date"
+
+[ ] 7.4  CSV export downloads correctly
+         → Click 📥 Export CSV
+         → File should download with columns:
+           full_name, id_number, department, role, date, time_in, time_out, status, confidence
+
+[ ] 7.5  PDF export downloads correctly
+         → Click 📄 Export PDF
+         → File should download as A4 landscape PDF
+         → Should show SACLI header, green column headers, alternating row colors
+
+
+## ─────────────────────────────────────────
+## 8. AUDIT LOG (/audit)
+## ─────────────────────────────────────────
+
+[ ] 8.1  Audit entries exist after actions
+         → Login, enroll, etc. should create entries
+         → Each row shows: timestamp, user_id, action, details, IP
+
+[ ] 8.2  Filter by action type works
+         → Select "User Login" → Filter
+         → Should only show user_login entries
+
+[ ] 8.3  Filter by date range works
+         → Set From and To dates → Filter
+         → Only entries in that range
+
+[ ] 8.4  Clear button resets all filters
+         → Apply filters, then click Clear
+         → All filters should be blank, all entries shown
+         → URL should be just /audit with no params
+
+
+## ─────────────────────────────────────────
+## 9. STUDENT SELF-SERVICE (/my-attendance)
+## ─────────────────────────────────────────
+
+[ ] 9.1  Login as a student and check own attendance
+         → Email: angelica.torres@sacli.edu.ph / Password: Admin123
+         → Should see only that student's own records
+         → Should NOT see other students' records
+
+[ ] 9.2  No records shows correct message
+         → If no records exist: "No attendance records found."
+
+
+## ─────────────────────────────────────────
+## 10. AUTOMATED TEST SUITE
+## ─────────────────────────────────────────
+
+Run these commands and verify all pass:
+
+[ ] 10.1  Property tests (fast)
+          → py -3.11 -m pytest tests/test_face_service.py tests/test_attendance_service.py -q
+          → Expected: 8 passed
+
+[ ] 10.2  Override tests
+          → py -3.11 -m pytest tests/test_override.py -q
+          → Expected: 4 passed
+
+[ ] 10.3  Reports tests
+          → py -3.11 -m pytest tests/test_reports.py -q
+          → Expected: 5 passed
+
+[ ] 10.4  Dashboard tests
+          → py -3.11 -m pytest tests/test_dashboard.py -q
+          → Expected: 3 passed
+
+[ ] 10.5  Enrollment tests
+          → py -3.11 -m pytest tests/test_enrollment.py -q
+          → Expected: 3 passed
+
+[ ] 10.6  Auth unit tests (not RBAC property tests — those are slow)
+          → py -3.11 -m pytest tests/test_auth.py -q -k "not property"
+          → Expected: 3 passed
+
+
+## ─────────────────────────────────────────
+## 11. RENDER (CLOUD) VERIFICATION
+## ─────────────────────────────────────────
+
+[ ] 11.1  Render URL loads login page
+          → Open: https://smartface-attendance-fdw0.onrender.com
+          → If sleeping (first load), wait up to 60s
+          → Should reach login page
+
+[ ] 11.2  Login works on Render
+          → admin@sacli.edu.ph / Admin123
+          → Should reach /dashboard
+
+[ ] 11.3  Dashboard loads on Render
+          → Summary cards show counts
+          → Charts load (may take a moment — Render free tier is slower)
+
+[ ] 11.4  Kiosk page loads (face recognition unavailable note)
+          → /kiosk should load but recognition shows "Waiting for face..."
+          → This is expected — Render free tier cannot run face_recognition
+
+[ ] 11.5  Reports and Audit work on Render
+          → Both pages load and filter correctly
+
+
+## ─────────────────────────────────────────
+## 12. PANEL QUESTIONS — KNOW THESE ANSWERS
+## ─────────────────────────────────────────
+
+Q: Why does the kiosk require a blink before recognizing?
+A: Liveness detection via Eye Aspect Ratio (EAR). Prevents photo spoofing.
+   The EAR drops below 0.22 for ≥2 consecutive frames = blink confirmed.
+   Code location: services/face_service.py → Step 7 LIVENESS HOOK.
+
+Q: What is the TOLERANCE value and why 0.45?
+A: Euclidean distance threshold. 0.45 is stricter than dlib's default 0.6.
+   Lower = stricter = fewer false positives but more false negatives.
+   Configurable via TOLERANCE env var without code changes.
+
+Q: How does debouncing work?
+A: After time_in is recorded, subsequent recognitions within 30 seconds
+   only update time_out (not create new rows). Enforced by last_seen_dict
+   in memory + UNIQUE KEY (user_id, date) at DB level as double guarantee.
+
+Q: How is RA 10173 compliance handled?
+A: consent_given=1 must be set before any face_encodings row is created.
+   Validated server-side in POST /api/enroll regardless of front-end state.
+
+Q: Where is the liveness hook in the code?
+A: services/face_service.py, Step 7 in recognize_frame().
+   Comment: "LIVENESS HOOK: Eye Aspect Ratio blink detection implemented here."
+
+Q: Why dlib over DeepFace/TensorFlow?
+A: TensorFlow requires ~400MB RAM. Render free tier only has 512MB.
+   dlib-bin is pre-compiled (~150MB total), no build required, runs locally.
+   For cloud: face recognition is disabled gracefully with a fallback message.
+
+Q: What happens if the database is unreachable at startup?
+A: App starts with empty encoding cache. Recognition returns all faces as
+   Unknown until DB reconnects and cache is reloaded. Non-fatal by design.
+
+Q: How are face encodings stored?
+A: 128-dimensional float64 numpy array serialized with .tobytes() = 1024 bytes
+   stored as BYTEA in PostgreSQL. Round-trip: np.frombuffer(blob, dtype=np.float64).
+
+
+## ─────────────────────────────────────────
+## SIGN-OFF
+## ─────────────────────────────────────────
+
+Tester: ___________________________
+Date:   ___________________________
+
+All critical items passed:  [ ] YES   [ ] NO
+
+Notes:
+_______________________________________________
+_______________________________________________
+_______________________________________________
