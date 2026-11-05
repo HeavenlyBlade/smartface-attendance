@@ -1,25 +1,16 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
 {% block head %}
 <style>
   .dash-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.75rem; }
-  .dash-header-left h1 { margin-bottom:0.2rem; }
   .live-dot { display:inline-flex; align-items:center; gap:0.4rem; font-size:0.78rem; font-weight:600;
               color:var(--color-primary); background:var(--color-primary-light);
               padding:0.25rem 0.75rem; border-radius:999px; }
   .live-dot::before { content:''; width:7px; height:7px; border-radius:50%;
                       background:var(--color-primary); animation:pulse 1.8s infinite; }
   @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.3)} }
-
-  /* Quick action bar */
   .quick-actions { display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1.75rem; }
-
-  /* Empty state */
   .empty-state { text-align:center; padding:3.5rem 1.5rem; color:var(--color-muted); }
-  .empty-state svg { margin:0 auto 1rem; opacity:0.4; }
-  .empty-state h3 { font-size:1.1rem; font-weight:600; color:#374151; margin-bottom:0.4rem; }
-
-  /* Name cell with avatar */
   .name-cell { display:flex; align-items:center; gap:0.65rem; }
   .name-avatar { width:32px; height:32px; border-radius:50%;
                  background:linear-gradient(135deg,#2d8f5f,var(--color-primary));
@@ -27,29 +18,35 @@
                  font-size:0.78rem; font-weight:700; flex-shrink:0; }
   .name-text { font-weight:600; font-size:0.875rem; }
   .name-sub  { font-size:0.75rem; color:var(--color-muted); }
-
-  /* Confidence bar */
   .conf-bar-wrap { display:flex; align-items:center; gap:0.5rem; }
-  .conf-bar { flex:1; height:4px; background:#e2e8f0; border-radius:2px; max-width:80px; }
-  .conf-bar-fill { height:100%; border-radius:2px; background:linear-gradient(90deg,#3a9169,var(--color-primary)); }
-  .conf-text { font-size:0.8rem; font-weight:600; color:var(--color-dark); white-space:nowrap; }
+  .conf-bar { flex:1; height:5px; background:#e2e8f0; border-radius:3px; max-width:70px; }
+  .conf-high  { background:linear-gradient(90deg,#2d8f5f,var(--color-primary)); }
+  .conf-mid   { background:linear-gradient(90deg,#d97706,#f59e0b); }
+  .conf-low   { background:linear-gradient(90deg,#dc2626,#ef4444); }
+  .conf-text-high { font-size:0.8rem; font-weight:700; color:var(--color-primary); }
+  .conf-text-mid  { font-size:0.8rem; font-weight:700; color:#d97706; }
+  .conf-text-low  { font-size:0.8rem; font-weight:700; color:#dc2626; }
+  .charts-row { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; margin-bottom:1.75rem; }
+  .chart-card { background:var(--color-white); border:1px solid var(--color-border);
+                border-radius:var(--radius-lg); padding:1.25rem 1.5rem; box-shadow:var(--shadow-sm); }
+  .chart-title { font-size:0.9rem; font-weight:700; color:var(--color-dark); margin-bottom:1rem; }
+  @media(max-width:768px){ .charts-row{grid-template-columns:1fr;} }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-wrapper">
 
-  <!-- Header -->
   <div class="dash-header">
-    <div class="dash-header-left">
+    <div>
       <h1 class="page-title">Attendance Dashboard</h1>
       <p class="page-subtitle">Real-time overview for {{ now.strftime('%A, %B %d, %Y') if now else 'Today' }}</p>
     </div>
     <span class="live-dot">Live</span>
   </div>
 
-  <!-- Summary Cards -->
-  <div class="summary-cards">
+  <!-- Summary Cards — now 4 cards including Absent -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1.25rem;margin-bottom:1.75rem;">
     <div class="summary-card summary-card--green">
       <div class="summary-card__icon"><i data-lucide="user-check" style="width:28px;height:28px;stroke:rgba(255,255,255,0.9)"></i></div>
       <div class="summary-card__value" id="present-count">{{ present_count }}</div>
@@ -60,6 +57,11 @@
       <div class="summary-card__value" id="late-count">{{ late_count }}</div>
       <div class="summary-card__label">Late Today</div>
     </div>
+    <div class="summary-card" style="background:linear-gradient(135deg,#b91c1c,#ef4444);box-shadow:0 8px 24px rgba(239,68,68,0.35);">
+      <div class="summary-card__icon"><i data-lucide="user-x" style="width:28px;height:28px;stroke:rgba(255,255,255,0.9)"></i></div>
+      <div class="summary-card__value" id="absent-count">{{ absent_count }}</div>
+      <div class="summary-card__label">Absent Today</div>
+    </div>
     <div class="summary-card summary-card--neutral">
       <div class="summary-card__icon"><i data-lucide="users" style="width:28px;height:28px;stroke:rgba(255,255,255,0.9)"></i></div>
       <div class="summary-card__value" id="total-users">{{ total_users }}</div>
@@ -67,7 +69,7 @@
     </div>
   </div>
 
-  <!-- Quick Actions (admin only) -->
+  <!-- Quick Actions -->
   {% if session.get('role') == 'admin' %}
   <div class="quick-actions">
     <a href="{{ url_for('attendance.kiosk') }}"  class="btn btn-primary">
@@ -79,8 +81,23 @@
     <a href="{{ url_for('attendance.reports') }}" class="btn btn-outline-primary">
       <i data-lucide="bar-chart-2" style="width:15px;height:15px"></i> Reports
     </a>
+    <a href="{{ url_for('attendance.reports_pdf') }}" class="btn btn-outline-primary">
+      <i data-lucide="file-text" style="width:15px;height:15px"></i> Export PDF
+    </a>
   </div>
   {% endif %}
+
+  <!-- Charts row -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-title">📊 7-Day Attendance Trend</div>
+      <canvas id="trend-chart" height="160"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">🍩 Today's Breakdown</div>
+      <canvas id="donut-chart" height="160"></canvas>
+    </div>
+  </div>
 
   <!-- Live error banner -->
   <div id="live-feed-error" style="display:none;" class="alert alert-warning" role="alert" aria-live="polite">
@@ -104,14 +121,7 @@
       <div class="table-wrapper" style="border:none;border-radius:0;">
         <table class="table">
           <thead>
-            <tr>
-              <th>Name</th>
-              <th>ID Number</th>
-              <th>Time In</th>
-              <th>Time Out</th>
-              <th>Status</th>
-              <th>Confidence</th>
-            </tr>
+            <tr><th>Name</th><th>ID Number</th><th>Time In</th><th>Time Out</th><th>Status</th><th>Confidence</th></tr>
           </thead>
           <tbody id="attendance-table-body">
             {% for r in records %}
@@ -136,10 +146,23 @@
               </td>
               <td>
                 {% if r.confidence %}
-                <div class="conf-bar-wrap">
-                  <div class="conf-bar"><div class="conf-bar-fill" style="width:{{ r.confidence }}%"></div></div>
-                  <span class="conf-text">{{ '%.1f'|format(r.confidence) }}%</span>
-                </div>
+                  {% set conf = r.confidence|float %}
+                  {% if conf >= 90 %}
+                    <div class="conf-bar-wrap">
+                      <div class="conf-bar"><div class="conf-high" style="width:{{ conf }}%;height:5px;border-radius:3px;"></div></div>
+                      <span class="conf-text-high">{{ '%.1f'|format(conf) }}%</span>
+                    </div>
+                  {% elif conf >= 70 %}
+                    <div class="conf-bar-wrap">
+                      <div class="conf-bar"><div class="conf-mid" style="width:{{ conf }}%;height:5px;border-radius:3px;"></div></div>
+                      <span class="conf-text-mid">{{ '%.1f'|format(conf) }}%</span>
+                    </div>
+                  {% else %}
+                    <div class="conf-bar-wrap">
+                      <div class="conf-bar"><div class="conf-low" style="width:{{ conf }}%;height:5px;border-radius:3px;"></div></div>
+                      <span class="conf-text-low">{{ '%.1f'|format(conf) }}%</span>
+                    </div>
+                  {% endif %}
                 {% else %}—{% endif %}
               </td>
             </tr>
@@ -147,9 +170,9 @@
             <tr>
               <td colspan="6">
                 <div class="empty-state">
-                  <i data-lucide="inbox" style="width:40px;height:40px"></i>
-                  <h3>No attendance records yet today</h3>
-                  <p>Records will appear here as faces are recognized at the kiosk.</p>
+                  <i data-lucide="inbox" style="width:40px;height:40px;margin:0 auto 1rem;opacity:0.3;display:block"></i>
+                  <h3 style="font-size:1.1rem;font-weight:600;color:#374151;margin-bottom:0.4rem;">No attendance records yet today</h3>
+                  <p>Records appear as faces are recognized at the kiosk.</p>
                 </div>
               </td>
             </tr>
@@ -162,10 +185,64 @@
 
 </div>
 {% endblock %}
+
 {% block scripts %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 <script>
-// Pass today's date string to JS
-window.DASHBOARD_DATE = "{{ now.strftime('%Y-%m-%d') if now else '' }}";
+// 7-day trend chart
+var trendCtx = document.getElementById('trend-chart');
+if (trendCtx) {
+  new Chart(trendCtx, {
+    type: 'bar',
+    data: {
+      labels: {{ chart_labels|safe }},
+      datasets: [
+        { label: 'Present', data: {{ chart_present|safe }},
+          backgroundColor: 'rgba(76,175,130,0.8)', borderRadius: 4 },
+        { label: 'Late', data: {{ chart_late|safe }},
+          backgroundColor: 'rgba(212,175,55,0.8)', borderRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } },
+             grid: { color: 'rgba(0,0,0,0.05)' } }
+      }
+    }
+  });
+}
+
+// Today's donut
+var donutCtx = document.getElementById('donut-chart');
+if (donutCtx) {
+  var p = {{ present_count }}, l = {{ late_count }}, a = {{ absent_count }};
+  new Chart(donutCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Present', 'Late', 'Absent'],
+      datasets: [{ data: [p, l, a],
+        backgroundColor: ['rgba(76,175,130,0.85)','rgba(212,175,55,0.85)','rgba(239,68,68,0.85)'],
+        borderWidth: 0, hoverOffset: 6 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '68%',
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 12 } },
+        tooltip: { callbacks: {
+          label: function(c) {
+            var total = p+l+a;
+            var pct = total > 0 ? Math.round(c.raw/total*100) : 0;
+            return c.label + ': ' + c.raw + ' (' + pct + '%)';
+          }
+        }}
+      }
+    }
+  });
+}
 </script>
 {% endblock %}

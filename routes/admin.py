@@ -87,9 +87,20 @@ def users():
 
     search = request.args.get("q", "").strip()
     result = list_users(page=page, per_page=25, search=search)
+    # Add encoding count per user
+    from models.db import execute_query as _eq
+    user_list = result["users"] or []
+    enc_counts = {}
+    try:
+        rows = _eq("SELECT user_id, COUNT(*) AS cnt FROM face_encodings GROUP BY user_id", fetchall=True)
+        enc_counts = {r["user_id"]: int(r["cnt"]) for r in (rows or [])}
+    except Exception:
+        pass
+    for u in user_list:
+        u["enc_count"] = enc_counts.get(u["id"], 0)
     return render_template(
         "users.html",
-        users=result["users"],
+        users=user_list,
         total=result["total"],
         pages=result["pages"],
         current_page=page,

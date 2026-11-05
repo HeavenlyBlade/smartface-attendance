@@ -247,8 +247,7 @@
                 <th>ID Number</th>
                 <th class="hide-mobile">Role</th>
                 <th class="hide-mobile">Department</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th>Enrolled</th><th>Status</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -271,6 +270,17 @@
                 <!-- Department -->
                 <td class="hide-mobile" style="font-size:0.88rem;">
                   {{ user.department or '—' }}
+                </td>
+
+                <!-- Encoding count badge -->
+                <td>
+                  {% if user.enc_count > 0 %}
+                    <span class="status-badge" style="background:#dcfce7;color:#14532d;">
+                      ✓ {{ user.enc_count }} sample{{ "s" if user.enc_count != 1 else "" }}
+                    </span>
+                  {% else %}
+                    <span class="status-badge" style="background:#fee2e2;color:#7f1d1d;">✗ Not enrolled</span>
+                  {% endif %}
                 </td>
 
                 <!-- Active / Inactive badge -->

@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}Attendance Reports{% endblock %}
 {% block head %}
 <style>
@@ -47,7 +47,9 @@
           <a href="{{ url_for('attendance.reports') }}" class="btn btn-outline-primary">Clear</a>
           {% if records %}
           <a href="{{ url_for('attendance.reports_export', start_date=start_date, end_date=end_date, role=role, department=department) }}"
-             class="btn btn-gold">Export CSV</a>
+             class="btn btn-gold">📥 Export CSV</a>
+          <a href="{{ url_for('attendance.reports_pdf', start_date=start_date, end_date=end_date, role=role, department=department) }}"
+             class="btn btn-outline-primary">📄 Export PDF</a>
           {% endif %}
         </div>
       </div>

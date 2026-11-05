@@ -56,10 +56,10 @@ def dashboard():
     """
     today = date_type.today().isoformat()
 
+    import json as _json
     try:
         present_count = (execute_query(
             "SELECT COUNT(*) AS cnt FROM attendance WHERE date=%s AND status='present'",
-
             params=(today,), fetchone=True) or {}).get("cnt", 0)
 
         late_count = (execute_query(
@@ -70,11 +70,32 @@ def dashboard():
             "SELECT COUNT(*) AS cnt FROM users WHERE is_active=1",
             fetchone=True) or {}).get("cnt", 0)
 
+        absent_count = max(0, int(total_users) - int(present_count) - int(late_count))
+
         records = get_today_records()
+
+        # Chart data — last 7 days attendance trend
+        chart_labels = []
+        chart_present = []
+        chart_late = []
+        from datetime import timedelta
+        for i in range(6, -1, -1):
+            d = (date_type.today() - timedelta(days=i)).isoformat()
+            chart_labels.append(d[5:])  # MM-DD
+            p = (execute_query(
+                "SELECT COUNT(*) AS cnt FROM attendance WHERE date=%s AND status='present'",
+                params=(d,), fetchone=True) or {}).get("cnt", 0)
+            l = (execute_query(
+                "SELECT COUNT(*) AS cnt FROM attendance WHERE date=%s AND status='late'",
+                params=(d,), fetchone=True) or {}).get("cnt", 0)
+            chart_present.append(int(p))
+            chart_late.append(int(l))
+
     except Exception as exc:
         logger.error("dashboard: DB error — %s", exc)
-        present_count = late_count = total_users = 0
+        present_count = late_count = total_users = absent_count = 0
         records = []
+        chart_labels = chart_present = chart_late = []
 
     return render_template(
         "dashboard.html",
@@ -82,7 +103,11 @@ def dashboard():
         present_count=present_count,
         late_count=late_count,
         total_users=total_users,
+        absent_count=absent_count,
         records=records,
+        chart_labels=_json.dumps(chart_labels),
+        chart_present=_json.dumps(chart_present),
+        chart_late=_json.dumps(chart_late),
     )
 
 
