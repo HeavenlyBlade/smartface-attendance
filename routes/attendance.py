@@ -337,3 +337,95 @@ def my_attendance():
         records = []
 
     return render_template("my_attendance.html", records=records)
+
+# ---------------------------------------------------------------------------
+# PDF Export
+# ---------------------------------------------------------------------------
+
+@attendance_bp.route("/reports/export/pdf")
+@role_required("admin", "faculty")
+def reports_pdf():
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
+    from reportlab.lib.enums import TA_CENTER
+    import io as _io
+
+    start_date = request.args.get("start_date", "").strip()
+    end_date   = request.args.get("end_date",   "").strip()
+    role_f     = request.args.get("role",        "").strip()
+    dept_f     = request.args.get("department",  "").strip()[:100]
+
+    try:
+        result = get_records({
+            "start_date": start_date or None, "end_date": end_date or None,
+            "role": role_f or None, "department": dept_f or None,
+            "page": 1, "per_page": 10000,
+        })
+        records = result["records"]
+    except Exception as exc:
+        logger.error("reports_pdf: DB error -- %s", exc)
+        return jsonify({"error": "Database error"}), 503
+
+    buf = _io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                            leftMargin=1.5*cm, rightMargin=1.5*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+    styles  = getSampleStyleSheet()
+    green   = colors.HexColor("#4CAF82")
+    t_style = ParagraphStyle("T", parent=styles["Heading1"], textColor=green,
+                              fontSize=18, spaceAfter=4, alignment=TA_CENTER)
+    s_style = ParagraphStyle("S", parent=styles["Normal"],
+                              textColor=colors.HexColor("#64748b"),
+                              fontSize=9, spaceAfter=2, alignment=TA_CENTER)
+    story = [
+        Paragraph("SmartFace Attendance Report", t_style),
+        Paragraph("St. Anne College Lucena, Inc. (SACLI)", s_style),
+    ]
+    parts = []
+    if start_date: parts.append("From: " + start_date)
+    if end_date:   parts.append("To: "   + end_date)
+    if role_f:     parts.append("Role: " + role_f)
+    if dept_f:     parts.append("Dept: " + dept_f)
+    story.append(Paragraph("  |  ".join(parts) if parts else "All Records", s_style))
+    story.append(Paragraph(
+        "Generated: " + datetime.now().strftime("%B %d, %Y %H:%M") +
+        "  |  Total: " + str(len(records)), s_style))
+    story.append(Spacer(1, 0.4*cm))
+    story.append(HRFlowable(width="100%", thickness=2, color=green))
+    story.append(Spacer(1, 0.4*cm))
+
+    headers = ["Full Name","ID Number","Department","Role","Date","Time In","Time Out","Status","Confidence"]
+    data = [headers]
+    for r in records:
+        conf = "{:.1f}%".format(float(r.get("confidence", 0))) if r.get("confidence") else "--"
+        data.append([
+            r.get("full_name",""), r.get("id_number",""), r.get("department",""),
+            str(r.get("role","")).capitalize(), str(r.get("date","")),
+            str(r.get("time_in","") or "--"), str(r.get("time_out","") or "--"),
+            str(r.get("status","")).capitalize(), conf,
+        ])
+    col_widths = [3.8*cm,2.4*cm,3.5*cm,2*cm,2.2*cm,2*cm,2*cm,2*cm,2*cm]
+    tbl = Table(data, colWidths=col_widths, repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0),(-1,0), green),
+        ("TEXTCOLOR",     (0,0),(-1,0), colors.white),
+        ("FONTNAME",      (0,0),(-1,0), "Helvetica-Bold"),
+        ("FONTSIZE",      (0,0),(-1,0), 8),
+        ("ALIGN",         (0,0),(-1,-1),"CENTER"),
+        ("VALIGN",        (0,0),(-1,-1),"MIDDLE"),
+        ("FONTNAME",      (0,1),(-1,-1),"Helvetica"),
+        ("FONTSIZE",      (0,1),(-1,-1), 7.5),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white, colors.HexColor("#f0fdf4")]),
+        ("GRID",          (0,0),(-1,-1), 0.4, colors.HexColor("#e2e8f0")),
+        ("TOPPADDING",    (0,0),(-1,-1), 4),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 4),
+    ]))
+    story.append(tbl)
+    doc.build(story)
+    buf.seek(0)
+    filename = "attendance_" + date_type.today().isoformat() + ".pdf"
+    return Response(buf.getvalue(), mimetype="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=" + filename})
