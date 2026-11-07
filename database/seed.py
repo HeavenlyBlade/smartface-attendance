@@ -39,7 +39,7 @@ import config  # noqa: F401 — triggers .env load and sets DB_* constants
 # Constants
 # ---------------------------------------------------------------------------
 
-DEFAULT_PASSWORD = "SmartFace2024!"
+DEFAULT_PASSWORD = "Admin123"
 ADMIN_EMAIL = "admin@sacli.edu.ph"
 SEED_RANDOM = 42          # reproducible runs
 CONFIDENCE_MIN = 75.0
@@ -144,6 +144,7 @@ def _insert_user(conn, cursor, user_data: dict, role: str = "student") -> int:
             (full_name, email, password_hash, role, id_number, department,
              consent_given, is_active)
         VALUES (%s, %s, %s, %s, %s, %s, 1, 1)
+        RETURNING id
     """
     params = (
         user_data["full_name"],
@@ -154,7 +155,8 @@ def _insert_user(conn, cursor, user_data: dict, role: str = "student") -> int:
         user_data["department"],
     )
     cursor.execute(sql, params)
-    return cursor.lastrowid
+    row = cursor.fetchone()
+    return row["id"] if row else None
 
 
 # ---------------------------------------------------------------------------
