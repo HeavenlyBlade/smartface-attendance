@@ -168,4 +168,3 @@ def _role_redirect(role):
     if role == 'student':
         return redirect(url_for('attendance.my_attendance'))
     return redirect(url_for('auth.login'))
-
