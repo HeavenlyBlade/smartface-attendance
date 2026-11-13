@@ -28,7 +28,6 @@ from datetime import timedelta
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, redirect, url_for
-from flask_wtf.csrf import CSRFProtect
 
 # Load .env from the project root before importing config so that os.getenv
 # calls inside config.py resolve to the correct values.
@@ -87,13 +86,7 @@ def create_app() -> Flask:
     app.config["SESSION_PERMANENT"] = True
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
 
-    # Secure session cookie settings (M1)
-    app.config["SESSION_COOKIE_SECURE"] = config.SESSION_COOKIE_SECURE
-    app.config["SESSION_COOKIE_SAMESITE"] = config.SESSION_COOKIE_SAMESITE
-    app.config["WTF_CSRF_ENABLED"] = config.WTF_CSRF_ENABLED
 
-    # CSRF protection — exempts /api/* blueprint so JSON endpoints are unaffected
-    csrf = CSRFProtect(app)
 
     # ------------------------------------------------------------------ #
     # Blueprint registration                                               #
@@ -112,10 +105,8 @@ def create_app() -> Flask:
     app.register_blueprint(attendance_bp, url_prefix="")
 
     # api blueprint — JSON endpoints under /api/*
-    # Exempt from CSRF: callers use Authorization/session via JS fetch (not HTML forms)
     from routes.api import api_bp            # noqa: PLC0415
     app.register_blueprint(api_bp, url_prefix="/api")
-    csrf.exempt(api_bp)
 
     # ------------------------------------------------------------------ #
     # Error handlers                                                       #

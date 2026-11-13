@@ -56,13 +56,7 @@ if SECRET_KEY == "change-me-in-production" and not _debug_mode and not _test_mod
         "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
     )
 
-# CSRF protection (Flask-WTF).
-# Disabled automatically during test runs so pytest can POST without tokens.
-WTF_CSRF_ENABLED: bool = not _test_mode
 
-# Secure the session cookie in production; allow plain HTTP in dev/test.
-SESSION_COOKIE_SECURE: bool = not _debug_mode and not _test_mode
-SESSION_COOKIE_SAMESITE: str = "Lax"
 
 # ---------------------------------------------------------------------------
 # Database (MySQL via mysql-connector-python)
