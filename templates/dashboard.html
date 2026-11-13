@@ -28,7 +28,7 @@
   .conf-text-low  { font-size:0.8rem; font-weight:700; color:#dc2626; }
   .charts-row { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; margin-bottom:1.75rem; }
   .chart-card { background:var(--color-white); border:1px solid var(--color-border);
-                border-radius:var(--radius-lg); padding:1.25rem 1.5rem; box-shadow:var(--shadow-sm); }
+                border-radius:var(--radius-lg); padding:1.25rem 1.5rem; box-shadow:var(--shadow-sm);   overflow: hidden; }
   .chart-title { font-size:0.9rem; font-weight:700; color:var(--color-dark); margin-bottom:1rem; }
   @media(max-width:768px){ .charts-row{grid-template-columns:1fr;} }
 </style>
@@ -91,11 +91,11 @@
   <div class="charts-row">
     <div class="chart-card">
       <div class="chart-title">📊 7-Day Attendance Trend</div>
-      <canvas id="trend-chart" height="160"></canvas>
+      <div style="position:relative;height:180px;"><canvas id="trend-chart"></canvas></div>
     </div>
     <div class="chart-card">
       <div class="chart-title">🍩 Today's Breakdown</div>
-      <canvas id="donut-chart" height="160"></canvas>
+      <div style="position:relative;height:180px;"><canvas id="donut-chart"></canvas></div>
     </div>
   </div>
 
