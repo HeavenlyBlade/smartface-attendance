@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -69,8 +69,6 @@
     <!-- Body -->
     <div class="login-card-body">
       <form method="POST" action="{{ url_for('auth.login') }}" novalidate>
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-
         <div class="form-group">
           <label class="form-label" for="email">
             Email address <span class="required" aria-hidden="true">*</span>
