@@ -459,8 +459,6 @@
     <h2 class="modal-title" id="editModalTitle">Edit User Profile</h2>
 
     <form id="editForm" method="POST" action="" novalidate>
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-
       <div class="form-group">
         <label class="form-label" for="edit-full-name">
           Full Name <span class="required">*</span>
@@ -541,9 +539,7 @@
     </p>
     <div class="confirm-footer">
       <button class="btn btn-outline-primary" onclick="closeDeactivate()">Cancel</button>
-      <form id="deactivateForm" method="POST" action="" style="display:inline;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-        <button type="submit" class="btn btn-danger" id="deactivateSubmitBtn">
+      <form id="deactivateForm" method="POST" action="" style="display:inline;">        <button type="submit" class="btn btn-danger" id="deactivateSubmitBtn">
           Deactivate
         </button>
       </form>
@@ -566,9 +562,7 @@
     </p>
     <div class="confirm-footer">
       <button class="btn btn-outline-primary" onclick="closeBiometric()">Cancel</button>
-      <form id="biometricForm" method="POST" action="" style="display:inline;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-        <button type="submit" class="btn btn-danger">Delete Biometrics</button>
+      <form id="biometricForm" method="POST" action="" style="display:inline;">        <button type="submit" class="btn btn-danger">Delete Biometrics</button>
       </form>
     </div>
   </div>
@@ -586,9 +580,7 @@
     </p>
     <div class="confirm-footer">
       <button class="btn btn-outline-primary" onclick="closeDeleteUser()">Cancel</button>
-      <form id="deleteUserForm" method="POST" action="" style="display:inline;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-        <button type="submit" class="btn btn-danger">Yes, Delete Permanently</button>
+      <form id="deleteUserForm" method="POST" action="" style="display:inline;">        <button type="submit" class="btn btn-danger">Yes, Delete Permanently</button>
       </form>
     </div>
   </div>
