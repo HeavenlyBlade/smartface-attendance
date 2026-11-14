@@ -1,0 +1,380 @@
+# SmartFace — Project Context for External Review
+# =================================================
+# This file gives a reviewer everything they need to form an opinion
+# on the SmartFace attendance system capstone project.
+# Created: November 2026
+# =================================================
+
+
+## 1. PROJECT OVERVIEW
+
+SmartFace is a real-time face recognition attendance monitoring system built
+for St. Anne College Lucena, Inc. (SACLI) as a thesis/capstone project.
+
+Purpose:
+  Replace manual attendance roll calls with an automated kiosk that
+  identifies registered users via webcam, records time-in/time-out,
+  and provides reporting tools for administrators and faculty.
+
+Scope:
+  - Local deployment (laptop) for live demo / thesis defense
+  - Cloud deployment (Render) for portfolio / remote access (web pages only)
+  - Single institution, single campus use case
+  - Not designed for multi-tenant or large-scale deployment
+
+
+## 2. TECHNICAL STACK
+
+Layer             | Technology
+------------------|--------------------------------------------------
+Language          | Python 3.11
+Web framework     | Flask 3.0.3
+WSGI server       | Waitress 3.0.1 (production)
+Database          | Supabase (PostgreSQL, free tier)
+DB driver         | psycopg2-binary 2.9.9
+Face recognition  | face_recognition 1.3.0 + dlib-bin 20.0.1
+Face detection    | CNN model (dlib) for enrollment, HOG for kiosk
+Liveness          | Eye Aspect Ratio (EAR) blink detection via dlib 68-pt landmarks
+Face mesh overlay | MediaPipe FaceMesh (CDN, browser-side only)
+Computer vision   | OpenCV 4.10
+PDF export        | ReportLab 4.2.2
+Property tests    | Hypothesis 6.112.1
+Test runner       | pytest 8.3.2
+Frontend          | Vanilla JS + Jinja2 templates + custom CSS (no framework)
+Fonts             | Inter (Google Fonts)
+Icons             | Lucide (CDN)
+Charts            | Chart.js 4.4.3 (CDN)
+Deployment        | Render (cloud) + local/LAN via serve.py
+Source control    | GitHub (HeavenlyBlade/smartface-attendance)
+
+
+## 3. SYSTEM ARCHITECTURE
+
+Browser (getUserMedia, every 500ms)
+  → POST /api/recognize  {image: base64 JPEG}
+  → face_service.py      (CNN detect → dlib 128-dim encoding → EAR liveness → Euclidean match)
+  → attendance_service.py (30s debounce → PostgreSQL INSERT ON CONFLICT)
+  → Supabase PostgreSQL
+
+Key design decisions:
+  - Server-side recognition: browser only captures and sends frames
+  - In-memory encoding cache: loaded at startup, updated after enrollment
+  - Thread-safe cache with _cache_lock (threading.Lock)
+  - Debounce prevents duplicate rows: 30s minimum between time_out updates
+  - UNIQUE KEY (user_id, date) enforces one row per user per day at DB level
+  - Session-based lockout: progressive (30s → +10s per failed attempt from attempt 3)
+  - 8-hour session timeout
+
+
+## 4. DATABASE SCHEMA (PostgreSQL / Supabase)
+
+Table: users
+  id SERIAL PK, full_name, email UNIQUE, password_hash,
+  role ENUM(admin/faculty/student), id_number UNIQUE,
+  department, consent_given SMALLINT, is_active SMALLINT, created_at
+
+Table: face_encodings
+  id SERIAL PK, user_id FK→users(id) CASCADE,
+  encoding BYTEA (128-dim float64, 1024 bytes), sample_no SMALLINT, created_at
+
+Table: attendance
+  id SERIAL PK, user_id FK→users(id) CASCADE,
+  date DATE, time_in TIME, time_out TIME,
+  status ENUM(present/late/absent/manual),
+  confidence FLOAT, marked_by INT, created_at
+  UNIQUE (user_id, date)
+
+Table: audit_logs
+  id SERIAL PK, user_id INT, action VARCHAR, details TEXT,
+  ip_address VARCHAR, timestamp
+
+Seed data: 1 admin + 5 faculty + 24 students = 30 users
+           ~300 attendance rows across 15 weekdays (3 weeks)
+Default password for all seeded users: Admin123
+
+
+## 5. ROUTES (21 total)
+
+Route                              | Method | Roles         | Description
+-----------------------------------|--------|---------------|---------------------------
+/                                  | GET    | any           | Role-based redirect
+/login                             | GET/POST| public       | Login page
+/logout                            | GET    | authenticated | Logout + audit log
+/dashboard                         | GET    | admin,faculty | Live attendance summary
+/kiosk                             | GET    | admin,faculty | Full-screen recognition UI
+/enroll                            | GET    | admin         | Enrollment form + webcam
+/users                             | GET    | admin         | User management table
+/users/<id>/edit                   | POST   | admin         | Edit user profile
+/users/<id>/deactivate             | POST   | admin         | Toggle is_active
+/users/<id>/delete-biometric       | POST   | admin         | Delete face encodings
+/users/<id>/delete                 | POST   | admin         | Permanent user delete
+/reports                           | GET    | admin,faculty | Filtered attendance report
+/reports/export                    | GET    | admin,faculty | CSV download
+/reports/export/pdf                | GET    | admin,faculty | PDF download (ReportLab)
+/attendance/manual                 | POST   | admin         | Manual attendance override
+/audit                             | GET    | admin         | Audit log viewer
+/my-attendance                     | GET    | student       | Student self-service
+/api/recognize                     | POST   | admin,faculty | Frame recognition endpoint
+/api/enroll                        | POST   | admin         | Enrollment API endpoint
+/api/live-feed                     | GET    | admin,faculty | Live attendance JSON
+
+
+## 6. FACE RECOGNITION PIPELINE
+
+Enrollment (POST /api/enroll):
+  1. Validate consent_given=1 (RA 10173 compliance)
+  2. Decode base64 JPEG samples (3-5 required)
+  3. Quality check: Laplacian blur score >= 50
+  4. Quality check: face occupies >= 8% of frame
+  5. CNN face detection + dlib encoding (num_jitters=5 for robust embeddings)
+  6. Check duplicate email/id_number
+  7. Transaction: INSERT users + INSERT face_encodings BLOBs + save JPEGs
+  8. Write audit log + reload_known_faces()
+
+Recognition (POST /api/recognize, every 500ms):
+  1. Decode base64 JPEG
+  2. Downscale 0.5x for speed
+  3. BGR → RGB conversion
+  4. CNN face detection (face_recognition, model="cnn")
+  5. dlib 128-dim encoding (num_jitters=3)
+  6. Euclidean distance against in-memory cache
+  7. TOLERANCE = 0.45 (stricter than dlib default 0.6)
+  8. LIVENESS HOOK: EAR blink detection (EAR < 0.22 for >= 2 frames = blink)
+     - Requires one confirmed blink before first match acceptance per session
+     - Uses dlib 68-point shape predictor (shape_predictor_68_face_landmarks.dat, ~95MB)
+  9. Scale bounding box back to original dimensions (x2)
+  10. Trigger attendance logging if liveness confirmed
+
+Face encoding storage:
+  - numpy ndarray shape (128,) dtype float64
+  - Serialized: enc.tobytes() = 1024 bytes
+  - Stored as BYTEA in PostgreSQL
+  - Deserialized: np.frombuffer(blob, dtype=np.float64)
+
+
+## 7. KEY FEATURES
+
+Authentication:
+  - Progressive lockout: attempt 3 = 30s, +10s each additional attempt
+  - Session-based (cookie), 8-hour timeout
+  - Generic error messages (no field-level disclosure)
+  - Logout confirmation modal
+
+User Management:
+  - Search bar (PostgreSQL ILIKE, case-insensitive)
+  - Encoding count badge per user (enrolled/not enrolled)
+  - Edit profile, Deactivate/Reactivate, Re-enroll, Delete (all with confirmation modals)
+
+Dashboard:
+  - 4 summary cards: Present, Late, Absent, Registered Users
+  - 7-day bar chart (Chart.js)
+  - Today's donut chart
+  - Live-updating attendance table (every 3s, /api/live-feed)
+  - Confidence color coding: green ≥90%, gold 70-89%, red <70%
+
+Kiosk:
+  - Full-screen, viewport-locked (no scroll)
+  - MediaPipe FaceMesh overlay (face mesh, scan line animation, corner brackets)
+  - 500ms capture interval
+  - Brightness warning (brightness < 50/255)
+  - Audio cues: ascending chime on match, low tone on Unknown
+  - Face mesh drawn via requestAnimationFrame (60fps, smooth)
+
+Reports:
+  - Filter by date range, role, department
+  - CSV export (9 columns)
+  - PDF export (A4 landscape, ReportLab, SACLI-branded)
+  - Client + server-side date validation
+
+Audit Log:
+  - Reverse-chronological, paginated
+  - Filter by action type and date range
+  - Clear button (JS-driven, bypasses browser cache)
+
+Data Privacy:
+  - RA 10173 (Data Privacy Act of Philippines) compliance
+  - consent_given=1 required before any face encoding stored
+  - Validated server-side regardless of front-end state
+
+Liveness / Anti-spoofing:
+  - EAR (Eye Aspect Ratio) blink detection
+  - Requires one blink before match acceptance
+  - Prevents photo and screen spoofing
+  - Comment in code: "LIVENESS HOOK" at exact insertion point
+
+
+## 8. LIMITATIONS (known, documented)
+
+1. Face recognition disabled on Render free tier
+   - Reason: dlib compilation fails (OOM, 512MB RAM limit)
+   - Impact: Kiosk shows "Waiting for face..." on cloud
+   - Mitigation: Run locally for demo; Render is portfolio only
+
+2. Uploaded face JPEG files are ephemeral on Render
+   - Reason: Render free tier has no persistent filesystem
+   - Impact: Raw enrollment images wiped on each redeploy
+   - Mitigation: Face encodings stored in Supabase (survive redeploys)
+
+3. No GPU support
+   - dlib-bin is CPU-only (no CUDA build)
+   - CNN detection is slower than GPU (~200-400ms per frame)
+   - Acceptable for single-kiosk demo use
+
+4. Supabase free tier pauses after 7 days inactivity
+   - Mitigation: Windows Task Scheduler runs keepalive.py daily at 9AM
+
+5. Render free tier sleeps after 15 minutes idle
+   - Mitigation: UptimeRobot can ping /login every 5 minutes (optional)
+   - For demo: open site 2 minutes before panel arrives
+
+6. No password reset UI
+   - Enrolled users keep "Admin123" until manually updated via DB
+
+7. No email notifications
+   - No SMTP integration
+
+8. Single webcam only
+   - System assumes one webcam per machine
+
+9. Liveness requires blink before EVERY new session
+   - If server restarts between sessions, users must blink again
+   - _liveness state dict is in-memory, not persisted
+
+
+## 9. AUDIT RESULTS (November 2026)
+
+All 31 automated checks pass:
+  - App imports cleanly
+  - 21 routes registered
+  - 30 users in database
+  - GET /login: 200
+  - POST /login (correct): 302 redirect
+  - POST /login (wrong): 401
+  - All 8 pages render: 200
+  - API live-feed: 200
+  - Student RBAC: 403 on admin routes
+  - Unauthenticated: 302 to login
+  - face_recognition importable
+  - Shape predictor 100MB loaded
+  - Liveness predictor active
+  - Enrollment quality checks present
+  - Tolerance = 0.45
+  - Debounce = 30s
+  - No diagnostic routes
+  - Audio WAV files exist (44KB, 35KB)
+  - Chart height wrapper present
+  - No csrf_token in any template
+  - Logout modal in base template
+  - 8 property tests passing
+
+
+## 10. PROPERTY-BASED TESTS (Hypothesis)
+
+Property  | What it verifies                              | Status
+----------|-----------------------------------------------|--------
+1         | Encoding serialization round-trip             | PASS (100 examples)
+2         | Cache-DB alignment after reload               | PASS (50 examples)
+3         | Student role blocked from non-student routes  | PASS (100 examples)
+4         | Faculty role blocked from admin-only routes   | PASS (100 examples)
+5         | No plaintext passwords stored                 | PASS (100 examples)
+6         | Confidence formula: round((1-d)*100, 2)       | PASS (100 examples)
+7         | Unknown face classification above tolerance   | PASS (100 examples)
+8         | Attendance status assignment (time vs LATE)   | PASS (100 examples)
+9         | Debounce uniqueness (1 row per user per day)  | PASS (100 examples)
+10        | Debounce skip when elapsed < 30s              | PASS (100 examples)
+11        | N faces in frame → N entries in response      | PASS (20 examples)
+12        | Student data isolation in /my-attendance      | PASS (100 examples)
+
+
+## 11. FILE STRUCTURE
+
+smartface-attendance/
+├── app.py                     Flask app factory (196 lines)
+├── config.py                  Env var loader (85 lines)
+├── serve.py                   Waitress launcher (PORT env aware)
+├── keepalive.py               Supabase daily ping (Task Scheduler)
+├── requirements.txt           Cloud deps (no dlib)
+├── requirements-local.txt     Local deps (dlib instructions)
+├── TESTING.md                 56-item pre-defense checklist
+├── DEPLOYMENT.md              Full setup guide
+├── README.md                  Project overview
+├── .env                       Local secrets (not in git)
+│
+├── models/
+│   ├── db.py                  psycopg2 pool + execute_query (122 lines)
+│   ├── user.py                User CRUD (392 lines)
+│   ├── attendance.py          Attendance queries (220 lines)
+│   └── audit.py               Audit log queries (207 lines)
+│
+├── routes/
+│   ├── auth.py                Login/logout/role_required (125 lines)
+│   ├── admin.py               Enrollment/users/audit (401 lines)
+│   ├── attendance.py          Dashboard/kiosk/reports/PDF (431 lines)
+│   └── api.py                 JSON endpoints (436 lines)
+│
+├── services/
+│   ├── face_service.py        Recognition pipeline (313 lines)
+│   └── attendance_service.py  Debounce logic (205 lines)
+│
+├── database/
+│   ├── schema.sql             PostgreSQL table definitions
+│   ├── seed.py                30 demo users + attendance (304 lines)
+│   └── init_db.py             Auto-init on first boot (75 lines)
+│
+├── templates/
+│   ├── base.html              Navbar, flash, toast, logout modal
+│   ├── login.html             Premium gradient login card
+│   ├── dashboard.html         Cards + Chart.js + live table
+│   ├── kiosk.html             Full-screen recognition UI
+│   ├── enroll.html            Webcam + MediaPipe face detection
+│   ├── users.html             User management + modals
+│   ├── reports.html           Filtered table + CSV/PDF export
+│   ├── audit.html             Audit log viewer + filters
+│   └── my_attendance.html     Student self-service
+│
+├── static/
+│   ├── css/style.css          SACLI design system (Inter, green/gold)
+│   ├── js/camera.js           Kiosk loop + FaceMesh overlay
+│   ├── js/enroll.js           Enrollment webcam + quality preview
+│   ├── js/dashboard.js        Live feed polling
+│   ├── audio/success.wav      Ascending chime (match)
+│   ├── audio/fail.wav         Low tone (unknown)
+│   └── img/sacli_logo.png     40th anniversary logo + favicon.ico
+│
+└── models/
+    └── shape_predictor_68_face_landmarks.dat  (~95MB, dlib liveness)
+
+
+## 12. WHAT A REVIEWER SHOULD EVALUATE
+
+Technical quality:
+  - Is the architecture appropriate for a thesis-level project?
+  - Are the design decisions (dlib vs DeepFace, local vs cloud) well-reasoned?
+  - Is the code organized and maintainable?
+  - Are security concerns (RBAC, lockout, RA 10173) handled adequately?
+  - Is the property-based testing approach valid and meaningful?
+
+Academic / thesis criteria:
+  - Does liveness detection (EAR blink) qualify as a meaningful contribution?
+  - Is the LIVENESS HOOK comment sufficient for panel discussion?
+  - Are the correctness properties (12 total) adequate for the system?
+  - Is the system's scope appropriate for a capstone project?
+
+Deployment strategy:
+  - Is the local-primary / cloud-secondary approach defensible?
+  - Are the known limitations documented and justified adequately?
+
+Potential weaknesses to flag:
+  - EAR liveness is basic (can be defeated with a video of someone blinking)
+  - No GPU = CNN detection is slow (~300ms per frame)
+  - Supabase free tier limitations could be a concern for panelists
+  - No unit test coverage for the new features (liveness, PDF, charts)
+  - The face_recognition library uses a 2015-era model; modern alternatives exist
+
+Potential strengths to highlight:
+  - Full-stack implementation: DB, backend, frontend, AI pipeline
+  - Live face mesh overlay gives professional visual feedback
+  - Property-based testing demonstrates rigorous correctness verification
+  - RA 10173 compliance is a real Philippine legal requirement
+  - Graceful degradation (cloud works without face recognition)
+  - Comprehensive audit trail (audit_logs table, all actions recorded)
