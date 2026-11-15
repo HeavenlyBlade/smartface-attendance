@@ -1,15 +1,15 @@
 """
-database/seed.py — SmartFace development seed data
+database/seed.py  ESmartFace development seed data
 ====================================================
 Populates smartface_db with:
-  - 1 admin, 5 faculty, 24 students  (30 users total)
+  - 1 admin, 5 faculty, 11 students  (17 users total)
   - All passwords hashed; default password: SmartFace2024!
   - consent_given = 1  (RA 10173 compliance)
   - 3 weeks (21 calendar days) of attendance data for students, skipping
     weekends.  Per student per weekday:
-      70 % → present  (time_in 07:00–07:59, status='present')
-      15 % → late     (time_in 08:01–09:30, status='late')
-      15 % → absent   (no row inserted)
+      70 % ↁEpresent  (time_in 07:00 E7:59, status='present')
+      15 % ↁElate     (time_in 08:01 E9:30, status='late')
+      15 % ↁEabsent   (no row inserted)
 
 Run from the SmartFace project root:
     python database/seed.py
@@ -33,7 +33,7 @@ if _project_root not in sys.path:
 from werkzeug.security import generate_password_hash
 from models.db import get_connection, execute_query, execute_many
 import psycopg2.extras
-import config  # noqa: F401 — triggers .env load and sets DB_* constants
+import config  # noqa: F401  Etriggers .env load and sets DB_* constants
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -77,30 +77,17 @@ FACULTY_USERS = [
 ]
 
 STUDENT_USERS = [
-    {"full_name": "Angelica Torres",   "email": "angelica.torres@sacli.edu.ph",   "id_number": "SACLI-2024-0007",  "department": "College of Computer Studies"},
-    {"full_name": "Miguel Ramos",      "email": "miguel.ramos@sacli.edu.ph",      "id_number": "SACLI-2024-0008",  "department": "College of Computer Studies"},
-    {"full_name": "Kristine Aquino",   "email": "kristine.aquino@sacli.edu.ph",   "id_number": "SACLI-2024-0009",  "department": "College of Computer Studies"},
-    {"full_name": "Daniel Fernandez",  "email": "daniel.fernandez@sacli.edu.ph",  "id_number": "SACLI-2024-0010",  "department": "College of Computer Studies"},
-    {"full_name": "Joanna Mendoza",    "email": "joanna.mendoza@sacli.edu.ph",    "id_number": "SACLI-2024-0011",  "department": "College of Computer Studies"},
-    {"full_name": "Paolo Garcia",      "email": "paolo.garcia@sacli.edu.ph",      "id_number": "SACLI-2024-0012",  "department": "College of Education"},
-    {"full_name": "Carmela Navarro",   "email": "carmela.navarro@sacli.edu.ph",   "id_number": "SACLI-2024-0013",  "department": "College of Education"},
-    {"full_name": "Ronaldo Cruz",      "email": "ronaldo.cruz@sacli.edu.ph",      "id_number": "SACLI-2024-0014",  "department": "College of Education"},
-    {"full_name": "Patricia Lopez",    "email": "patricia.lopez@sacli.edu.ph",    "id_number": "SACLI-2024-0015",  "department": "College of Education"},
-    {"full_name": "Francis Gomez",     "email": "francis.gomez@sacli.edu.ph",     "id_number": "SACLI-2024-0016",  "department": "College of Business"},
-    {"full_name": "Marilou Rivera",    "email": "marilou.rivera@sacli.edu.ph",    "id_number": "SACLI-2024-0017",  "department": "College of Business"},
-    {"full_name": "Anthony Pascual",   "email": "anthony.pascual@sacli.edu.ph",   "id_number": "SACLI-2024-0018",  "department": "College of Business"},
-    {"full_name": "Shiela Morales",    "email": "shiela.morales@sacli.edu.ph",    "id_number": "SACLI-2024-0019",  "department": "College of Business"},
-    {"full_name": "Jerome Santiago",   "email": "jerome.santiago@sacli.edu.ph",   "id_number": "SACLI-2024-0020",  "department": "College of Business"},
-    {"full_name": "Rowena Flores",     "email": "rowena.flores@sacli.edu.ph",     "id_number": "SACLI-2024-0021",  "department": "College of Nursing"},
-    {"full_name": "Eduardo Aguilar",   "email": "eduardo.aguilar@sacli.edu.ph",   "id_number": "SACLI-2024-0022",  "department": "College of Nursing"},
-    {"full_name": "Liezl Santos",      "email": "liezl.santos@sacli.edu.ph",      "id_number": "SACLI-2024-0023",  "department": "College of Nursing"},
-    {"full_name": "Christian Dela Pena","email":"christian.delapena@sacli.edu.ph","id_number": "SACLI-2024-0024",  "department": "College of Nursing"},
-    {"full_name": "Mary Grace Reyes",  "email": "marygrace.reyes@sacli.edu.ph",   "id_number": "SACLI-2024-0025",  "department": "College of Nursing"},
-    {"full_name": "Jomar Tan",         "email": "jomar.tan@sacli.edu.ph",         "id_number": "SACLI-2024-0026",  "department": "College of Engineering"},
-    {"full_name": "Clarissa Villafuerte","email":"clarissa.villafuerte@sacli.edu.ph","id_number":"SACLI-2024-0027","department": "College of Engineering"},
-    {"full_name": "Alvin Ocampo",      "email": "alvin.ocampo@sacli.edu.ph",      "id_number": "SACLI-2024-0028",  "department": "College of Engineering"},
-    {"full_name": "Hazel Macaraeg",    "email": "hazel.macaraeg@sacli.edu.ph",    "id_number": "SACLI-2024-0029",  "department": "College of Engineering"},
-    {"full_name": "Bryan Catalan",     "email": "bryan.catalan@sacli.edu.ph",     "id_number": "SACLI-2024-0030",  "department": "College of Engineering"},
+    {"full_name": "Mon Gabriel Eta",      "email": "mongabriel.eta@sacli.edu.ph",      "id_number": "SACLI-2024-0007",  "department": "BSIT"},
+    {"full_name": "Dave Marione Ortega",  "email": "davemarione.ortega@sacli.edu.ph",  "id_number": "SACLI-2024-0008",  "department": "BSIT"},
+    {"full_name": "Benjamine Panganiban", "email": "benjamine.panganiban@sacli.edu.ph","id_number": "SACLI-2024-0009",  "department": "BSIT"},
+    {"full_name": "Carl Vincent Remolin", "email": "carlvincent.remolin@sacli.edu.ph", "id_number": "SACLI-2024-0010",  "department": "BSIT"},
+    {"full_name": "Justin Ritardo",       "email": "justin.ritardo@sacli.edu.ph",      "id_number": "SACLI-2024-0011",  "department": "BSIT"},
+    {"full_name": "Dan Cedreck Monsalve", "email": "dancedreck.monsalve@sacli.edu.ph", "id_number": "SACLI-2024-0012",  "department": "BSIT"},
+    {"full_name": "Keybe Duro",           "email": "keybe.duro@sacli.edu.ph",          "id_number": "SACLI-2024-0013",  "department": "BSIT"},
+    {"full_name": "Warien Atienza",       "email": "warien.atienza@sacli.edu.ph",      "id_number": "SACLI-2024-0014",  "department": "BSIT"},
+    {"full_name": "James Deligente",      "email": "james.deligente@sacli.edu.ph",     "id_number": "SACLI-2024-0015",  "department": "BSIT"},
+    {"full_name": "Nico De Mesa",         "email": "nico.demesa@sacli.edu.ph",         "id_number": "SACLI-2024-0016",  "department": "BSIT"},
+    {"full_name": "Kory Chester Atendido","email": "korychestser.atendido@sacli.edu.ph","id_number":"SACLI-2024-0017",  "department": "BSIT"},
 ]
 # fmt: on
 
@@ -125,7 +112,7 @@ def _weekdays_for_last_3_weeks() -> list[date]:
     between 14 and 15 actual attendance days depending on the calendar.
     """
     today = date.today()
-    end = today - timedelta(days=1)       # yesterday — so today is "live"
+    end = today - timedelta(days=1)       # yesterday  Eso today is "live"
     start = end - timedelta(days=20)      # 21-day window (indices 0..20)
     weekdays = []
     current = start
@@ -138,7 +125,7 @@ def _weekdays_for_last_3_weeks() -> list[date]:
 
 def _insert_user(conn, cursor, user_data: dict, role: str = "student") -> int:
     """Insert a single user row and return the new user id."""
-    # must_change_password defaults to 0 — seed users do not need forced password change
+    # must_change_password defaults to 0  Eseed users do not need forced password change
     # (ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password SMALLINT NOT NULL DEFAULT 0)
     hashed = generate_password_hash(DEFAULT_PASSWORD)
     sql = """
@@ -169,7 +156,7 @@ def seed() -> None:
     random.seed(SEED_RANDOM)
 
     print("=" * 60)
-    print("SmartFace — Database Seed Script")
+    print("SmartFace  EDatabase Seed Script")
     print("=" * 60)
 
     # ------------------------------------------------------------------ #
@@ -181,7 +168,7 @@ def seed() -> None:
         fetchone=True,
     )
     if existing:
-        print(f"[SKIP] Admin '{ADMIN_EMAIL}' already exists — seed already run.")
+        print(f"[SKIP] Admin '{ADMIN_EMAIL}' already exists  Eseed already run.")
         print("       Delete all rows from `users` and `attendance` to re-seed.")
         return
 
@@ -195,7 +182,7 @@ def seed() -> None:
         # ---------------------------------------------------------------- #
         print("\n[1/4] Inserting admin user …")
         admin_id = _insert_user(conn, cursor, ADMIN_USER, role="admin")
-        print(f"      ✓ Admin: {ADMIN_USER['full_name']} (id={admin_id})")
+        print(f"      ✁EAdmin: {ADMIN_USER['full_name']} (id={admin_id})")
 
         # ---------------------------------------------------------------- #
         # 2. Insert faculty                                                  #
@@ -203,17 +190,17 @@ def seed() -> None:
         print("\n[2/4] Inserting 5 faculty users …")
         for u in FACULTY_USERS:
             uid = _insert_user(conn, cursor, u, role="faculty")
-            print(f"      ✓ Faculty: {u['full_name']} (id={uid})")
+            print(f"      ✁EFaculty: {u['full_name']} (id={uid})")
 
         # ---------------------------------------------------------------- #
         # 3. Insert students                                                 #
         # ---------------------------------------------------------------- #
-        print("\n[3/4] Inserting 24 student users …")
+        print("\n[3/4] Inserting 11 student users …")
         student_ids: list[int] = []
         for u in STUDENT_USERS:
             uid = _insert_user(conn, cursor, u, role="student")
             student_ids.append(uid)
-            print(f"      ✓ Student: {u['full_name']} (id={uid})")
+            print(f"      ✁EStudent: {u['full_name']} (id={uid})")
 
         # ---------------------------------------------------------------- #
         # 4. Generate attendance rows (students only)                        #
@@ -221,7 +208,7 @@ def seed() -> None:
         print("\n[4/4] Generating 3 weeks of attendance data …")
         weekdays = _weekdays_for_last_3_weeks()
         print(f"      Weekdays found: {len(weekdays)} days "
-              f"({weekdays[0]} → {weekdays[-1]})")
+              f"({weekdays[0]} ↁE{weekdays[-1]})")
 
         attendance_rows: list[tuple] = []
         present_count = late_count = absent_count = 0
@@ -238,10 +225,10 @@ def seed() -> None:
                         student_id,
                         day.isoformat(),
                         str(t_in),
-                        None,          # time_out — NULL until recognized again
+                        None,          # time_out  ENULL until recognized again
                         "present",
                         confidence,
-                        None,          # marked_by — automatic
+                        None,          # marked_by  Eautomatic
                     ))
                     present_count += 1
 
@@ -276,22 +263,22 @@ def seed() -> None:
                     confidence = EXCLUDED.confidence
             """
             cursor.executemany(att_sql, attendance_rows)
-            print(f"      ✓ Inserted {len(attendance_rows)} attendance row(s):")
+            print(f"      ✁EInserted {len(attendance_rows)} attendance row(s):")
             print(f"        Present: {present_count}  |  Late: {late_count}  "
                   f"|  Absent (skipped): {absent_count}")
         else:
-            print("      (no attendance rows generated — check weekday window)")
+            print("      (no attendance rows generated  Echeck weekday window)")
 
         conn.commit()
         print("\n" + "=" * 60)
-        print("Seed complete — all 30 users and attendance data inserted.")
+        print("Seed complete  Eall 30 users and attendance data inserted.")
         print(f"\n  Admin login:  {ADMIN_EMAIL}")
         print(f"  Password:     {DEFAULT_PASSWORD}")
         print("=" * 60)
 
     except Exception as exc:
         conn.rollback()
-        print(f"\n[ERROR] Seed failed — transaction rolled back.\n  {exc}")
+        print(f"\n[ERROR] Seed failed  Etransaction rolled back.\n  {exc}")
         raise
     finally:
         cursor.close()
