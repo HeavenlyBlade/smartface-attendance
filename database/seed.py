@@ -2,7 +2,7 @@
 database/seed.py  ESmartFace development seed data
 ====================================================
 Populates smartface_db with:
-  - 1 admin, 5 faculty, 11 students  (17 users total)
+  - 1 admin, 1 test faculty, 11 students  (13 users total)
   - All passwords hashed; default password: SmartFace2024!
   - consent_given = 1  (RA 10173 compliance)
   - 3 weeks (21 calendar days) of attendance data for students, skipping
@@ -69,11 +69,7 @@ ADMIN_USER = {
 }
 
 FACULTY_USERS = [
-    {"full_name": "Jose Reyes",       "email": "jose.reyes@sacli.edu.ph",       "role": "faculty", "id_number": "SACLI-2024-0002", "department": "College of Computer Studies"},
-    {"full_name": "Ana Dela Cruz",    "email": "ana.delacruz@sacli.edu.ph",     "role": "faculty", "id_number": "SACLI-2024-0003", "department": "College of Education"},
-    {"full_name": "Roberto Villanueva","email": "roberto.villanueva@sacli.edu.ph","role":"faculty","id_number": "SACLI-2024-0004", "department": "College of Business"},
-    {"full_name": "Lourdes Castillo", "email": "lourdes.castillo@sacli.edu.ph", "role": "faculty", "id_number": "SACLI-2024-0005", "department": "College of Nursing"},
-    {"full_name": "Emmanuel Bautista","email": "emmanuel.bautista@sacli.edu.ph","role": "faculty", "id_number": "SACLI-2024-0006", "department": "College of Engineering"},
+    {"full_name": "Test Faculty",  "email": "test.faculty@sacli.edu.ph",  "role": "faculty", "id_number": "SACLI-2024-0002", "department": "BSIT"},
 ]
 
 STUDENT_USERS = [
@@ -187,7 +183,7 @@ def seed() -> None:
         # ---------------------------------------------------------------- #
         # 2. Insert faculty                                                  #
         # ---------------------------------------------------------------- #
-        print("\n[2/4] Inserting 5 faculty users …")
+        print("\n[2/4] Inserting 1 test faculty user …")
         for u in FACULTY_USERS:
             uid = _insert_user(conn, cursor, u, role="faculty")
             print(f"      ✁EFaculty: {u['full_name']} (id={uid})")
