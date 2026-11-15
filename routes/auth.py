@@ -5,6 +5,9 @@ from werkzeug.security import check_password_hash
 from models.user import get_user_by_email
 from models.audit import write_audit, ACTION_LOGIN, ACTION_LOGOUT
 
+# Run in Supabase SQL Editor:
+# ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password SMALLINT NOT NULL DEFAULT 0;
+
 auth_bp = Blueprint('auth', __name__)
 
 
@@ -95,6 +98,11 @@ def login():
     session['_last_active'] = datetime.now().isoformat()
     session.pop('login_attempts', None)
     session.pop('lockout_until',  None)
+    session.pop('csrf_token', None)  # force new token post-login
+
+    # Forced password change on first login
+    if user.get('must_change_password'):
+        return redirect(url_for('auth.change_password'))
 
     write_audit(user['id'], ACTION_LOGIN, f"Login from {request.remote_addr}", request.remote_addr)
     return _role_redirect(user['role'])
@@ -123,3 +131,39 @@ def _role_redirect(role):
     if role == 'student':
         return redirect(url_for('attendance.my_attendance'))
     return redirect(url_for('auth.login'))
+
+
+@auth_bp.route('/change-password', methods=['GET', 'POST'])
+def change_password():
+    """Forced or voluntary password change."""
+    if not session.get('user_id'):
+        return redirect(url_for('auth.login'))
+
+    if request.method == 'GET':
+        return render_template('change_password.html')
+
+    # CSRF check
+    if request.form.get('csrf_token') != session.get('csrf_token'):
+        abort(403)
+
+    new_password = request.form.get('new_password', '').strip()
+    confirm      = request.form.get('confirm_password', '').strip()
+
+    if not new_password or len(new_password) < 8:
+        flash('Password must be at least 8 characters.', 'error')
+        return render_template('change_password.html')
+
+    if new_password != confirm:
+        flash('Passwords do not match.', 'error')
+        return render_template('change_password.html')
+
+    from werkzeug.security import generate_password_hash
+    from models.db import execute_query as _eq
+    _eq(
+        'UPDATE users SET password_hash = %s, must_change_password = 0 WHERE id = %s',
+        params=(generate_password_hash(new_password), session['user_id']),
+        commit=True,
+    )
+    flash('Password changed successfully.', 'success')
+    session.pop('csrf_token', None)  # rotate token after password change
+    return _role_redirect(session.get('role'))

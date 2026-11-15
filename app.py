@@ -109,6 +109,24 @@ def create_app() -> Flask:
     app.register_blueprint(api_bp, url_prefix="/api")
 
     # ------------------------------------------------------------------ #
+    # CSRF protection via session token                                    #
+    # ------------------------------------------------------------------ #
+
+    import secrets as _secrets
+    from flask import session as _session, request as _req2
+
+    @app.before_request
+    def _ensure_csrf_token():
+        if 'csrf_token' not in _session:
+            _session['csrf_token'] = _secrets.token_hex(16)
+
+    @app.context_processor
+    def _csrf_context():
+        def csrf_token():
+            return _session.get('csrf_token', '')
+        return dict(csrf_token=csrf_token)
+
+    # ------------------------------------------------------------------ #
     # Error handlers                                                       #
     # ------------------------------------------------------------------ #
 

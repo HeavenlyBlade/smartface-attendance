@@ -119,6 +119,9 @@ def deactivate_user_route(user_id: int):
     - Writes an audit_logs entry on deactivation (Requirement 10.3).
     - Reactivation does not require an audit entry per spec.
     """
+    if request.form.get('csrf_token') != session.get('csrf_token'):
+        from flask import abort
+        abort(403)
     admin_id = session["user_id"]
 
     # Requirement 10.5 — cannot deactivate own account
@@ -173,6 +176,9 @@ def edit_user_route(user_id: int):
     Update the profile fields of a user: full_name, department, role, id_number.
     Requirement 10.2.
     """
+    if request.form.get('csrf_token') != session.get('csrf_token'):
+        from flask import abort
+        abort(403)
     target = get_user_by_id(user_id)
     if not target:
         flash("User not found.", "error")
@@ -223,6 +229,9 @@ def delete_biometric_route(user_id: int):
     4. Write an audit entry.
     Requirement 10.4, 11.2.
     """
+    if request.form.get('csrf_token') != session.get('csrf_token'):
+        from flask import abort
+        abort(403)
     admin_id = session["user_id"]
 
     target = get_user_by_id(user_id)
@@ -296,6 +305,9 @@ def delete_user_route(user_id: int):
     import shutil
     from models.audit import write_audit, ACTION_USER_DELETED
 
+    if request.form.get('csrf_token') != session.get('csrf_token'):
+        from flask import abort
+        abort(403)
     admin_id = session["user_id"]
 
     if user_id == admin_id:
@@ -398,4 +410,110 @@ def audit_log():
         start_date=start_date or "",
         end_date=end_date or "",
         action_choices=action_choices,
+    )
+
+
+@admin_bp.route("/accuracy-test")
+@role_required("admin")
+def accuracy_test():
+    """
+    GET /accuracy-test
+    Threshold analysis based on enrolled face encodings.
+    Shows genuine pair distances, impostor pair distances, and
+    estimated FAR/FRR at threshold values 0.30-0.60.
+    """
+    try:
+        from services.face_service import FACE_RECOGNITION_AVAILABLE, deserialize_encoding
+    except ImportError:
+        FACE_RECOGNITION_AVAILABLE = False
+        deserialize_encoding = None
+
+    if not FACE_RECOGNITION_AVAILABLE:
+        return render_template(
+            "accuracy_test.html",
+            unavailable=True,
+            message="face_recognition is not available on this deployment. Run locally to use this feature."
+        )
+
+    import numpy as np
+    try:
+        rows = execute_query(
+            "SELECT user_id, encoding FROM face_encodings WHERE encoding IS NOT NULL",
+            fetchall=True
+        ) or []
+    except Exception as exc:
+        return render_template("accuracy_test.html", unavailable=True, message=f"DB error: {exc}")
+
+    # Group encodings by user_id
+    from collections import defaultdict
+    user_encs = defaultdict(list)
+    for row in rows:
+        try:
+            enc = deserialize_encoding(bytes(row["encoding"]))
+            if enc.shape == (128,):
+                user_encs[row["user_id"]].append(enc)
+        except Exception:
+            pass
+
+    enrolled_users = len(user_encs)
+    total_encodings = sum(len(v) for v in user_encs.values())
+
+    if enrolled_users < 2:
+        return render_template(
+            "accuracy_test.html",
+            unavailable=True,
+            message="Need at least 2 enrolled users to run accuracy test."
+        )
+
+    import face_recognition as _fr
+    uids = list(user_encs.keys())
+    genuine_dists = []
+    impostor_dists = []
+
+    # Genuine pairs: same user_id, different sample indices
+    for uid, encs in user_encs.items():
+        for i in range(len(encs)):
+            for j in range(i + 1, len(encs)):
+                d = float(_fr.face_distance([encs[i]], encs[j])[0])
+                genuine_dists.append(d)
+
+    # Impostor pairs: different user_ids (sample first encoding per user to keep it manageable)
+    first_encs = {uid: user_encs[uid][0] for uid in uids}
+    for i in range(len(uids)):
+        for j in range(i + 1, len(uids)):
+            d = float(_fr.face_distance([first_encs[uids[i]]], first_encs[uids[j]])[0])
+            impostor_dists.append(d)
+
+    # Statistics
+    mean_genuine  = round(float(np.mean(genuine_dists)),  4) if genuine_dists  else None
+    mean_impostor = round(float(np.mean(impostor_dists)), 4) if impostor_dists else None
+
+    # Suggested threshold: midpoint between means (if available)
+    if mean_genuine is not None and mean_impostor is not None:
+        suggested = round((mean_genuine + mean_impostor) / 2.0, 2)
+    else:
+        suggested = 0.45
+
+    # Threshold sweep
+    thresholds = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60]
+    threshold_rows = []
+    for t in thresholds:
+        # FAR: impostor pairs accepted (distance <= threshold) / total impostor pairs
+        # FRR: genuine pairs rejected (distance > threshold) / total genuine pairs
+        far = round(sum(1 for d in impostor_dists if d <= t) / max(1, len(impostor_dists)), 4) if impostor_dists else None
+        frr = round(sum(1 for d in genuine_dists  if d >  t) / max(1, len(genuine_dists)),  4) if genuine_dists  else None
+        threshold_rows.append({"threshold": t, "far": far, "frr": frr})
+
+    return render_template(
+        "accuracy_test.html",
+        unavailable=False,
+        enrolled_users=enrolled_users,
+        total_encodings=total_encodings,
+        genuine_count=len(genuine_dists),
+        impostor_count=len(impostor_dists),
+        mean_genuine=mean_genuine,
+        mean_impostor=mean_impostor,
+        suggested_threshold=suggested,
+        current_threshold=0.45,
+        threshold_rows=threshold_rows,
     )

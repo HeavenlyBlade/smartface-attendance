@@ -28,13 +28,13 @@ py -3.11 -c "import reportlab; print('reportlab', reportlab.Version)"
 # Expected: reportlab 4.2.2
 ```
 
-| # | Check | Pass? | Notes |
-|---|---|---|---|
-| 0.1 | `.env` no BOM, `DATABASE_URL` set | [ ] | |
-| 0.2 | DB reachable, users exist | [ ] | |
-| 0.3 | `face_recognition` importable | [ ] | |
-| 0.4 | Shape predictor ~95 MB | [ ] | |
-| 0.5 | `reportlab` 4.2.2 | [ ] | |
+|  #  | Check                             | Pass? | Notes |
+| --- |  ---                              |  ---  |    ---|
+| 0.1 | `.env` no BOM, `DATABASE_URL` set | [x]   |       |
+| 0.2 | DB reachable, users exist         | [x]   | it have a 30 users, maybe because it was seeded but it is ideal to have it empty.|
+| 0.3 | `face_recognition` importable     | [x]   |       |
+| 0.4 | Shape predictor ~95 MB            | [x]   |it printed 100MB  |
+| 0.5 | `reportlab` 4.2.2                 | [x]   |       |
 
 ---
 
@@ -48,10 +48,10 @@ py -3.11 serve.py --ssl
 
 | # | Expected log line | Pass? |
 |---|---|---|
-| 1.1 | `SmartFace \| Production \| Waitress WSGI` | [ ] |
-| 1.2 | `load_known_faces: loaded N encoding(s)` | [ ] |
-| 1.3 | `Shape predictor loaded — liveness detection active` | [ ] |
-| 1.4 | No `SyntaxError` / `ImportError` | [ ] |
+| 1.1 | `SmartFace \| Production \| Waitress WSGI` | [x] |
+| 1.2 | `load_known_faces: loaded N encoding(s)` | [x] |
+| 1.3 | `Shape predictor loaded — liveness detection active` | [x] |
+| 1.4 | No `SyntaxError` / `ImportError` | [x] |
 
 ---
 
@@ -59,8 +59,8 @@ py -3.11 serve.py --ssl
 
 | # | Test | Expected | Pass? |
 |---|---|---|---|
-| 2.1 | Login `admin@sacli.edu.ph` / `Admin123` | Redirect to `/dashboard` | [ ] |
-| 2.2 | Wrong password | Generic "Invalid credentials." message | [ ] |
+| 2.1 | Login `admin@sacli.edu.ph` / `Admin123` | Redirect to `/dashboard` | [x] |
+| 2.2 | Wrong password | Generic "Invalid credentials." message | [F] |
 | 2.3 | 3 wrong attempts | "Locked for 30 second(s)." | [ ] |
 | 2.4 | Logout → Cancel | Stays logged in | [ ] |
 | 2.5 | Logout → Confirm | Redirects to `/login` | [ ] |

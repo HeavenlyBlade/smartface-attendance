@@ -138,6 +138,8 @@ def _weekdays_for_last_3_weeks() -> list[date]:
 
 def _insert_user(conn, cursor, user_data: dict, role: str = "student") -> int:
     """Insert a single user row and return the new user id."""
+    # must_change_password defaults to 0 — seed users do not need forced password change
+    # (ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password SMALLINT NOT NULL DEFAULT 0)
     hashed = generate_password_hash(DEFAULT_PASSWORD)
     sql = """
         INSERT INTO users

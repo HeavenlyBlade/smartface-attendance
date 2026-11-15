@@ -279,8 +279,8 @@ def recognize_frame(image_b64: str) -> list:
 
         # Step 7: Match within TOLERANCE + LIVENESS check (EAR blink detection)
         # LIVENESS HOOK: Eye Aspect Ratio blink detection implemented here.
-        # Requires one confirmed blink before first match acceptance per session.
-        # Prevents photo/screen spoofing attacks.
+        # Requires one confirmed blink before each match acceptance.
+        # Mitigates static photo spoofing; video replay can defeat blink detection.
         uid, name, confidence = None, "Unknown", None
         if enc_snapshot and best_dist <= config.TOLERANCE:
             cand_uid = uid_snapshot[best_index]
@@ -309,5 +309,8 @@ def recognize_frame(image_b64: str) -> list:
             "confidence": confidence,
             "bounding_box": {"top": top, "right": right, "bottom": bottom, "left": left},
         })
+        # Reset liveness so the next recognition event requires a fresh blink
+        if uid is not None:
+            _liveness[uid] = {"blinked": False, "frames_closed": 0}
 
     return results

@@ -202,5 +202,11 @@ def log_attendance(user_id: int, confidence: float) -> dict:
     # Requirement 6.5: update last_seen_dict only on success
     # ------------------------------------------------------------------
     last_seen_dict[user_id] = now
+    # Reset liveness state so next recognition requires a fresh blink
+    try:
+        from services.face_service import reset_liveness_state
+        reset_liveness_state(user_id)
+    except Exception:
+        pass
 
     return {"logged": True, "user_id": user_id, "status": status}

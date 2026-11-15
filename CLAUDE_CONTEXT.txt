@@ -1,4 +1,4 @@
-# SmartFace — Project Context for External Review
+# SmartFace  EProject Context for External Review
 # =================================================
 # This file gives a reviewer everything they need to form an opinion
 # on the SmartFace attendance system capstone project.
@@ -33,7 +33,7 @@ WSGI server       | Waitress 3.0.1 (production)
 Database          | Supabase (PostgreSQL, free tier)
 DB driver         | psycopg2-binary 2.9.9
 Face recognition  | face_recognition 1.3.0 + dlib-bin 20.0.1
-Face detection    | CNN model (dlib) for enrollment, HOG for kiosk
+Face detection    | CNN model (dlib) for enrollment, CNN for kiosk
 Liveness          | Eye Aspect Ratio (EAR) blink detection via dlib 68-pt landmarks
 Face mesh overlay | MediaPipe FaceMesh (CDN, browser-side only)
 Computer vision   | OpenCV 4.10
@@ -51,10 +51,10 @@ Source control    | GitHub (HeavenlyBlade/smartface-attendance)
 ## 3. SYSTEM ARCHITECTURE
 
 Browser (getUserMedia, every 500ms)
-  → POST /api/recognize  {image: base64 JPEG}
-  → face_service.py      (CNN detect → dlib 128-dim encoding → EAR liveness → Euclidean match)
-  → attendance_service.py (30s debounce → PostgreSQL INSERT ON CONFLICT)
-  → Supabase PostgreSQL
+  ↁEPOST /api/recognize  {image: base64 JPEG}
+  ↁEface_service.py      (CNN detect ↁEdlib 128-dim encoding ↁEEAR liveness ↁEEuclidean match)
+  ↁEattendance_service.py (30s debounce ↁEPostgreSQL INSERT ON CONFLICT)
+  ↁESupabase PostgreSQL
 
 Key design decisions:
   - Server-side recognition: browser only captures and sends frames
@@ -62,7 +62,7 @@ Key design decisions:
   - Thread-safe cache with _cache_lock (threading.Lock)
   - Debounce prevents duplicate rows: 30s minimum between time_out updates
   - UNIQUE KEY (user_id, date) enforces one row per user per day at DB level
-  - Session-based lockout: progressive (30s → +10s per failed attempt from attempt 3)
+  - Session-based lockout: progressive (30s ↁE+10s per failed attempt from attempt 3)
   - 8-hour session timeout
 
 
@@ -93,13 +93,14 @@ Seed data: 1 admin + 5 faculty + 24 students = 30 users
 Default password for all seeded users: Admin123
 
 
-## 5. ROUTES (21 total)
+## 5. ROUTES (23 total)
 
 Route                              | Method | Roles         | Description
 -----------------------------------|--------|---------------|---------------------------
 /                                  | GET    | any           | Role-based redirect
 /login                             | GET/POST| public       | Login page
 /logout                            | GET    | authenticated | Logout + audit log
+/change-password                   | GET/POST| authenticated| Forced or voluntary password change
 /dashboard                         | GET    | admin,faculty | Live attendance summary
 /kiosk                             | GET    | admin,faculty | Full-screen recognition UI
 /enroll                            | GET    | admin         | Enrollment form + webcam
@@ -113,6 +114,7 @@ Route                              | Method | Roles         | Description
 /reports/export/pdf                | GET    | admin,faculty | PDF download (ReportLab)
 /attendance/manual                 | POST   | admin         | Manual attendance override
 /audit                             | GET    | admin         | Audit log viewer
+/accuracy-test                     | GET    | admin         | FAR/FRR accuracy metrics table
 /my-attendance                     | GET    | student       | Student self-service
 /api/recognize                     | POST   | admin,faculty | Frame recognition endpoint
 /api/enroll                        | POST   | admin         | Enrollment API endpoint
@@ -134,13 +136,13 @@ Enrollment (POST /api/enroll):
 Recognition (POST /api/recognize, every 500ms):
   1. Decode base64 JPEG
   2. Downscale 0.5x for speed
-  3. BGR → RGB conversion
+  3. BGR ↁERGB conversion
   4. CNN face detection (face_recognition, model="cnn")
   5. dlib 128-dim encoding (num_jitters=3)
   6. Euclidean distance against in-memory cache
   7. TOLERANCE = 0.45 (stricter than dlib default 0.6)
   8. LIVENESS HOOK: EAR blink detection (EAR < 0.22 for >= 2 frames = blink)
-     - Requires one confirmed blink before first match acceptance per session
+     - Requires one confirmed blink before each recognition event (liveness resets after every successful match, not just per-session)
      - Uses dlib 68-point shape predictor (shape_predictor_68_face_landmarks.dat, ~95MB)
   9. Scale bounding box back to original dimensions (x2)
   10. Trigger attendance logging if liveness confirmed
@@ -199,7 +201,7 @@ Data Privacy:
 Liveness / Anti-spoofing:
   - EAR (Eye Aspect Ratio) blink detection
   - Requires one blink before match acceptance
-  - Prevents photo and screen spoofing
+  - Mitigates static photo spoofing; video replay can defeat blink detection (documented limitation)
   - Comment in code: "LIVENESS HOOK" at exact insertion point
 
 
@@ -227,8 +229,9 @@ Liveness / Anti-spoofing:
    - Mitigation: UptimeRobot can ping /login every 5 minutes (optional)
    - For demo: open site 2 minutes before panel arrives
 
-6. No password reset UI
-   - Enrolled users keep "Admin123" until manually updated via DB
+6. Forced password change on first login
+   - must_change_password column (SMALLINT); set to 1 to force user to change on next login via /change-password
+   - Seeded users start with must_change_password=0; can be flagged via DB
 
 7. No email notifications
    - No SMTP integration
@@ -236,9 +239,15 @@ Liveness / Anti-spoofing:
 8. Single webcam only
    - System assumes one webcam per machine
 
-9. Liveness requires blink before EVERY new session
-   - If server restarts between sessions, users must blink again
+9. Liveness requires blink before EVERY new recognition event
+   - After a successful match, liveness state is reset so the same user
+     must blink again before the next recognition is accepted
    - _liveness state dict is in-memory, not persisted
+
+10. Liveness: video replay attacks can defeat blink detection
+    - A sufficiently long video of the enrolled user blinking will pass
+      the EAR check; blink-based liveness is not a complete anti-spoofing
+      solution against video replay
 
 
 ## 9. AUDIT RESULTS (November 2026)
@@ -255,7 +264,7 @@ All 31 automated checks pass:
   - Student RBAC: 403 on admin routes
   - Unauthenticated: 302 to login
   - face_recognition importable
-  - Shape predictor 100MB loaded
+  - Shape predictor ~95MB loaded
   - Liveness predictor active
   - Enrollment quality checks present
   - Tolerance = 0.45
@@ -263,9 +272,9 @@ All 31 automated checks pass:
   - No diagnostic routes
   - Audio WAV files exist (44KB, 35KB)
   - Chart height wrapper present
-  - No csrf_token in any template
+  - CSRF token injected via session (before_request + context_processor in app.py); all state-changing forms include {{ csrf_token() }}
   - Logout modal in base template
-  - 8 property tests passing
+  - 12 property tests passing (8 run as automated suite, 4 as integration)
 
 
 ## 10. PROPERTY-BASED TESTS (Hypothesis)
@@ -282,7 +291,7 @@ Property  | What it verifies                              | Status
 8         | Attendance status assignment (time vs LATE)   | PASS (100 examples)
 9         | Debounce uniqueness (1 row per user per day)  | PASS (100 examples)
 10        | Debounce skip when elapsed < 30s              | PASS (100 examples)
-11        | N faces in frame → N entries in response      | PASS (20 examples)
+11        | N faces in frame ↁEN entries in response      | PASS (20 examples)
 12        | Student data isolation in /my-attendance      | PASS (100 examples)
 
 
@@ -299,49 +308,42 @@ smartface-attendance/
 ├── DEPLOYMENT.md              Full setup guide
 ├── README.md                  Project overview
 ├── .env                       Local secrets (not in git)
-│
-├── models/
-│   ├── db.py                  psycopg2 pool + execute_query (122 lines)
-│   ├── user.py                User CRUD (392 lines)
-│   ├── attendance.py          Attendance queries (220 lines)
-│   └── audit.py               Audit log queries (207 lines)
-│
-├── routes/
-│   ├── auth.py                Login/logout/role_required (125 lines)
-│   ├── admin.py               Enrollment/users/audit (401 lines)
-│   ├── attendance.py          Dashboard/kiosk/reports/PDF (431 lines)
-│   └── api.py                 JSON endpoints (436 lines)
-│
-├── services/
-│   ├── face_service.py        Recognition pipeline (313 lines)
-│   └── attendance_service.py  Debounce logic (205 lines)
-│
-├── database/
-│   ├── schema.sql             PostgreSQL table definitions
-│   ├── seed.py                30 demo users + attendance (304 lines)
-│   └── init_db.py             Auto-init on first boot (75 lines)
-│
-├── templates/
-│   ├── base.html              Navbar, flash, toast, logout modal
-│   ├── login.html             Premium gradient login card
-│   ├── dashboard.html         Cards + Chart.js + live table
-│   ├── kiosk.html             Full-screen recognition UI
-│   ├── enroll.html            Webcam + MediaPipe face detection
-│   ├── users.html             User management + modals
-│   ├── reports.html           Filtered table + CSV/PDF export
-│   ├── audit.html             Audit log viewer + filters
-│   └── my_attendance.html     Student self-service
-│
-├── static/
-│   ├── css/style.css          SACLI design system (Inter, green/gold)
-│   ├── js/camera.js           Kiosk loop + FaceMesh overlay
-│   ├── js/enroll.js           Enrollment webcam + quality preview
-│   ├── js/dashboard.js        Live feed polling
-│   ├── audio/success.wav      Ascending chime (match)
-│   ├── audio/fail.wav         Low tone (unknown)
-│   └── img/sacli_logo.png     40th anniversary logo + favicon.ico
-│
-└── models/
+━E├── models/
+━E  ├── db.py                  psycopg2 pool + execute_query (122 lines)
+━E  ├── user.py                User CRUD (392 lines)
+━E  ├── attendance.py          Attendance queries (220 lines)
+━E  └── audit.py               Audit log queries (207 lines)
+━E├── routes/
+━E  ├── auth.py                Login/logout/role_required (125 lines)
+━E  ├── admin.py               Enrollment/users/audit (401 lines)
+━E  ├── attendance.py          Dashboard/kiosk/reports/PDF (431 lines)
+━E  └── api.py                 JSON endpoints (436 lines)
+━E├── services/
+━E  ├── face_service.py        Recognition pipeline (313 lines)
+━E  └── attendance_service.py  Debounce logic (205 lines)
+━E├── database/
+━E  ├── schema.sql             PostgreSQL table definitions
+━E  ├── seed.py                30 demo users + attendance (304 lines)
+━E  └── init_db.py             Auto-init on first boot (75 lines)
+━E├── templates/
+━E  ├── base.html              Navbar, flash, toast, logout modal
+━E  ├── login.html             Premium gradient login card
+━E  ├── dashboard.html         Cards + Chart.js + live table
+━E  ├── kiosk.html             Full-screen recognition UI
+━E  ├── enroll.html            Webcam + MediaPipe face detection
+━E  ├── users.html             User management + modals
+━E  ├── reports.html           Filtered table + CSV/PDF export
+━E  ├── audit.html             Audit log viewer + filters
+━E  └── my_attendance.html     Student self-service
+━E├── static/
+━E  ├── css/style.css          SACLI design system (Inter, green/gold)
+━E  ├── js/camera.js           Kiosk loop + FaceMesh overlay
+━E  ├── js/enroll.js           Enrollment webcam + quality preview
+━E  ├── js/dashboard.js        Live feed polling
+━E  ├── audio/success.wav      Ascending chime (match)
+━E  ├── audio/fail.wav         Low tone (unknown)
+━E  └── img/sacli_logo.png     40th anniversary logo + favicon.ico
+━E└── models/
     └── shape_predictor_68_face_landmarks.dat  (~95MB, dlib liveness)
 
 
