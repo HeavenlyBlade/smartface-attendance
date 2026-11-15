@@ -240,4 +240,77 @@ A: 128-dim `float64` numpy array → `.tobytes()` → 1024-byte `BYTEA` in Postg
 
 ---
 
+## 13. Security — CSRF Protection
+
+CSRF tokens are now generated per-session in `app.py` (`before_request`) and exposed to all templates via a `csrf_token()` context processor. Every state-changing HTML form (login, change-password, users, enroll) includes the token.
+
+| # | Test | Expected | Pass? |
+|---|---|---|---|
+| 13.1 | Submit login form with the CSRF token removed (use browser dev-tools or curl to omit the `csrf_token` field) | Server returns `403 Forbidden` | [ ] |
+| 13.2 | Submit login form normally (token present and valid) | Redirect to `/dashboard` as usual | [ ] |
+| 13.3 | Submit `/change-password` form without the CSRF token | Server returns `403 Forbidden` | [ ] |
+| 13.4 | Submit `/change-password` form with the correct token | Password updated, success flash message | [ ] |
+| 13.5 | Submit user-edit or delete form without the CSRF token | Server returns `403 Forbidden` | [ ] |
+| 13.6 | Submit enroll form without the CSRF token | Server returns `403 Forbidden` | [ ] |
+| 13.7 | View page source of any state-changing form | `<input type="hidden" name="csrf_token" value="...">` is present | [ ] |
+
+---
+
+## 14. Forced Password Change
+
+The `users` table has a `must_change_password` SMALLINT column. When set to `1`, the user is redirected to `/change-password` immediately after login. After a successful password change, the column is reset to `0`.
+
+| # | Test | Expected | Pass? |
+|---|---|---|---|
+| 14.1 | In DB, set `must_change_password = 1` for a non-admin test user | — (setup step) | [ ] |
+| 14.2 | Log in as that user | After login, browser redirects to `/change-password` instead of `/dashboard` | [ ] |
+| 14.3 | Attempt to navigate to `/dashboard` while `must_change_password = 1` | Redirected back to `/change-password` | [ ] |
+| 14.4 | Submit `/change-password` with a new valid password | Redirect to `/dashboard`, success flash message | [ ] |
+| 14.5 | In DB, verify `must_change_password` for that user after step 14.4 | Column value is `0` | [ ] |
+| 14.6 | Log out and log back in as the same user | Goes directly to `/dashboard` with no forced redirect | [ ] |
+
+---
+
+## 15. Liveness — Per-Recognition Reset
+
+The `_liveness` dict is now reset after every accepted match. Each new recognition event requires a fresh blink; a blink from a previous accepted match does not carry over.
+
+| # | Test | Expected | Pass? |
+|---|---|---|---|
+| 15.1 | Blink in front of kiosk → recognition accepted | Name + confidence appears | [ ] |
+| 15.2 | Immediately present same face again (no blink) | Face detected (brackets) but recognition NOT accepted | [ ] |
+| 15.3 | Blink again | Recognition accepted a second time | [ ] |
+| 15.4 | Person A blinks → accepted; Person B presents face without blinking | Person B is NOT matched | [ ] |
+| 15.5 | Person B then blinks | Person B is matched | [ ] |
+
+---
+
+## 16. New Routes
+
+### 16a. `/change-password` (GET/POST, authenticated)
+
+| # | Test | Expected | Pass? |
+|---|---|---|---|
+| 16.1 | Logged-in user visits `/change-password` | Page loads with status `200`, form displayed | [ ] |
+| 16.2 | Unauthenticated visitor visits `/change-password` | Redirect to `/login` | [ ] |
+| 16.3 | Submit valid new password with correct CSRF token | Password updated, redirect to `/dashboard` | [ ] |
+| 16.4 | Submit mismatched passwords | Error message displayed, stays on form | [ ] |
+
+### 16b. `/accuracy-test` (GET, admin only — FAR/FRR metrics)
+
+| # | Test | Expected | Pass? |
+|---|---|---|---|
+| 16.5 | Admin visits `/accuracy-test` | Page loads with status `200` | [ ] |
+| 16.6 | FAR/FRR metrics table is visible | Table rendered with False Accept Rate and False Reject Rate columns | [ ] |
+| 16.7 | Non-admin (student/staff) visits `/accuracy-test` | Returns `403 Forbidden` | [ ] |
+| 16.8 | Unauthenticated visitor visits `/accuracy-test` | Redirect to `/login` | [ ] |
+
+### 16c. Route Count
+
+| # | Check | Expected | Pass? |
+|---|---|---|---|
+| 16.9 | Count registered routes in `app.py` | 23 routes total (up from 21) | [ ] |
+
+---
+
 *Tester: ___________________ | Date: ___________________ | All critical items passed: [ ] YES [ ] NO*
