@@ -229,7 +229,7 @@
           <button type="submit" class="btn btn-outline-primary btn-sm">Search</button>
           {% if search %}
           <a href="{{ url_for('admin.users') }}" class="btn btn-sm btn-outline-primary"
-             style="white-space:nowrap;">✕ Clear</a>
+             style="white-space:nowrap;">Clear</a>
           {% endif %}
         </form>
         <a href="{{ url_for('admin.enroll_page') }}" class="btn btn-primary btn-sm">+ Enroll</a>
@@ -276,10 +276,10 @@
                 <td>
                   {% if user.enc_count > 0 %}
                     <span class="status-badge" style="background:#dcfce7;color:#14532d;">
-                      ✓ {{ user.enc_count }} sample{{ "s" if user.enc_count != 1 else "" }}
+                      {{ user.enc_count }} sample{{ "s" if user.enc_count != 1 else "" }}
                     </span>
                   {% else %}
-                    <span class="status-badge" style="background:#fee2e2;color:#7f1d1d;">✗ Not enrolled</span>
+                    <span class="status-badge" style="background:#fee2e2;color:#7f1d1d;">Not enrolled</span>
                   {% endif %}
                 </td>
 
@@ -306,7 +306,7 @@
                       data-role="{{ user.role | e }}"
                       data-dept="{{ (user.department or '') | e }}"
                     >
-                      ✏ Edit
+                      Edit
                     </button>
 
                     {# Deactivate / Reactivate — submits a POST form #}
@@ -319,7 +319,7 @@
                           data-name="{{ user.full_name | e }}"
                           data-active="1"
                         >
-                          🔒 Deactivate
+                          Deactivate
                         </button>
                       {% else %}
                         <button
@@ -329,13 +329,13 @@
                           data-name="{{ user.full_name | e }}"
                           data-active="0"
                         >
-                          🔓 Reactivate
+                          Reactivate
                         </button>
                       {% endif %}
                     {% else %}
                       {# Greyed-out — self-deactivation blocked #}
                       <button class="btn btn-outline-danger btn-sm" disabled title="You cannot deactivate your own account.">
-                        🔒 Deactivate
+                        Deactivate
                       </button>
                     {% endif %}
 
@@ -347,7 +347,7 @@
                       data-name="{{ user.full_name | e }}"
                       title="Delete face encodings so user can be re-enrolled"
                     >
-                      🔄 Re-enroll
+                      Re-enroll
                     </button>
 
                     {# Delete User (permanent) #}
@@ -358,7 +358,7 @@
                       data-uid="{{ user.id }}"
                       data-name="{{ user.full_name | e }}"
                     >
-                      🗑 Delete
+                      Delete
                     </button>
                     {% endif %}
 
@@ -438,7 +438,7 @@
       {% else %}
         <!-- Empty state -->
         <div class="empty-state">
-          <div class="empty-state-icon">👤</div>
+          <div class="empty-state-icon"></div>
           <p>No users found. <a href="{{ url_for('admin.enroll_page') }}">Enroll the first user.</a></p>
         </div>
       {% endif %}
@@ -533,7 +533,7 @@
 <div class="confirm-backdrop" id="deactivateBackdrop" role="dialog" aria-modal="true"
      aria-labelledby="deactivateTitle">
   <div class="confirm-dialog">
-    <div class="confirm-icon" id="deactivateIcon">🔒</div>
+    <div class="confirm-icon" id="deactivateIcon"></div>
     <h2 class="confirm-title" id="deactivateTitle">Deactivate User?</h2>
     <p class="confirm-body" id="deactivateBody">
       This will prevent the user from logging in.
@@ -555,7 +555,7 @@
 <div class="confirm-backdrop" id="biometricBackdrop" role="dialog" aria-modal="true"
      aria-labelledby="biometricTitle">
   <div class="confirm-dialog">
-    <div class="confirm-icon">⚠️</div>
+    <div class="confirm-icon">Warning</div>
     <h2 class="confirm-title" id="biometricTitle">Delete Biometric Data?</h2>
     <p class="confirm-body" id="biometricBody">
       All face encodings and sample images will be permanently removed.
@@ -573,7 +573,7 @@
 <!-- Delete User Confirmation Modal -->
 <div class="confirm-backdrop" id="deleteUserBackdrop" role="dialog" aria-modal="true">
   <div class="confirm-dialog">
-    <div class="confirm-icon">🗑️</div>
+    <div class="confirm-icon"></div>
     <h2 class="confirm-title" id="deleteUserTitle">Delete User?</h2>
     <p class="confirm-body" id="deleteUserBody">
       This will permanently delete the user, all their attendance records,
@@ -697,13 +697,13 @@ function confirmDeactivate(userId, fullName, isCurrentlyActive) {
   form.action = '/users/' + userId + '/deactivate';
 
   if (isCurrentlyActive) {
-    icon.textContent      = '🔒';
+    icon.textContent      = '';
     title.textContent     = 'Deactivate ' + fullName + '?';
     body.textContent      = fullName + ' will no longer be able to log in. You can reactivate them later.';
     submitBtn.textContent = 'Deactivate';
     submitBtn.className   = 'btn btn-danger';
   } else {
-    icon.textContent      = '🔓';
+    icon.textContent      = '';
     title.textContent     = 'Reactivate ' + fullName + '?';
     body.textContent      = fullName + ' will regain the ability to log in.';
     submitBtn.textContent = 'Reactivate';

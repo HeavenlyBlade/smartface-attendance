@@ -63,7 +63,12 @@ def enroll_page():
     via getUserMedia (handled in static/js/enroll.js, added in Task 2.5).
     The POST submission is handled by POST /api/enroll in routes/api.py.
     """
-    return render_template("enroll.html")
+    user_id = request.args.get("user_id", type=int)
+    users_list = execute_query("SELECT id, full_name FROM users WHERE is_active = 1 AND role = 'student' ORDER BY full_name", fetchall=True)
+    preselect_user = None
+    if user_id:
+        preselect_user = execute_query("SELECT id, full_name FROM users WHERE id = ?", params=(user_id,), fetchone=True)
+    return render_template("enroll.html", users=users_list, preselect_user=preselect_user)
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +292,7 @@ def delete_biometric_route(user_id: int):
         )
         flash("An error occurred while deleting biometric data.", "error")
 
-    return redirect(url_for("admin.users"))
+    return redirect(url_for("admin.enroll_page") + f"?user_id={user_id}")
 
 
 # ---------------------------------------------------------------------------

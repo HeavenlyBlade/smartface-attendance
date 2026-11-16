@@ -358,6 +358,10 @@
     </p>
   </div>
 
+  {% if preselect_user %}
+  <p class="text-muted">Re-enrolling: <strong>{{ preselect_user.full_name }}</strong></p>
+  {% endif %}
+
   <!-- Main two-column layout -->
   <div class="enroll-layout">
 
@@ -367,7 +371,7 @@
     <div class="enroll-form-card">
 
       <div class="enroll-form-header">
-        <span class="header-icon" aria-hidden="true">👤</span>
+        <span class="header-icon" aria-hidden="true"></span>
         <h2>User Information</h2>
       </div>
 
@@ -486,7 +490,7 @@
 
           <!-- RA 10173 Consent -->
           <div class="consent-box">
-            <p class="consent-title">&#9654; Biometric Data Consent — RA 10173</p>
+            <p class="consent-title">Biometric Data Consent — RA 10173</p>
             <div class="form-check">
               <input
                 id="consent-checkbox"
@@ -515,8 +519,8 @@
           <!-- Submission requirements status -->
           <div class="submit-hint" id="submit-hint" aria-live="polite">
             Required before submitting:
-            <span id="req-consent"  class="requirement requirement-pending">Consent ✗</span>
-            <span id="req-samples"  class="requirement requirement-pending">0 / 3 samples ✗</span>
+            <span id="req-consent"  class="requirement requirement-pending">Consent (pending)</span>
+            <span id="req-samples"  class="requirement requirement-pending">0 / 3 samples (pending)</span>
           </div>
 
           <!-- Submit -->

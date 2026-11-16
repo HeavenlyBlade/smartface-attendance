@@ -50,7 +50,7 @@
     <tbody>
       {% for row in threshold_rows %}
       <tr style="background:{{'#fff' if loop.index is odd else '#f8f8f8'}}{% if row.threshold == current_threshold %};font-weight:700{% endif %}">
-        <td style="padding:8px 12px">{{row.threshold}}{% if row.threshold == current_threshold %} ← current{% endif %}</td>
+        <td style="padding:8px 12px">{{row.threshold}}{% if row.threshold == current_threshold %} (current){% endif %}</td>
         <td style="padding:8px 12px">{{(row.far * 100) | round(2) if row.far is not none else 'N/A'}}%</td>
         <td style="padding:8px 12px">{{(row.frr * 100) | round(2) if row.frr is not none else 'N/A'}}%</td>
       </tr>

@@ -82,20 +82,20 @@
         <nav class="pager" aria-label="Audit log pagination">
           {% if current_page > 1 %}
           <a class="btn btn-outline-primary btn-sm"
-             href="{{ url_for('admin.audit_log', page=current_page-1, action=action_filter or '', start_date=start_date or '', end_date=end_date or '') }}">← Prev</a>
-          {% else %}<button class="btn btn-outline-primary btn-sm" disabled>← Prev</button>{% endif %}
+             href="{{ url_for('admin.audit_log', page=current_page-1, action=action_filter or '', start_date=start_date or '', end_date=end_date or '') }}">&laquo; Prev</a>
+          {% else %}<button class="btn btn-outline-primary btn-sm" disabled>&laquo; Prev</button>{% endif %}
           <span style="font-size:0.82rem;color:var(--color-muted);padding:0 0.5rem;">Page {{ current_page }} of {{ pages }}</span>
           {% if current_page < pages %}
           <a class="btn btn-outline-primary btn-sm"
-             href="{{ url_for('admin.audit_log', page=current_page+1, action=action_filter or '', start_date=start_date or '', end_date=end_date or '') }}">Next →</a>
-          {% else %}<button class="btn btn-outline-primary btn-sm" disabled>Next →</button>{% endif %}
+             href="{{ url_for('admin.audit_log', page=current_page+1, action=action_filter or '', start_date=start_date or '', end_date=end_date or '') }}">Next &raquo;</a>
+          {% else %}<button class="btn btn-outline-primary btn-sm" disabled>Next &raquo;</button>{% endif %}
         </nav>
       </div>
       {% endif %}
 
       {% else %}
       <div style="text-align:center;padding:3rem;color:var(--color-muted);">
-        <div style="font-size:2.5rem;">📋</div>
+        <div style="font-size:2.5rem;"></div>
         <p>No audit log entries found for the selected filters.</p>
       </div>
       {% endif %}

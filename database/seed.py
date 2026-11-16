@@ -151,13 +151,13 @@ def seed() -> None:
         # 1. Insert admin
         print("\n[1/4] Inserting admin user ...")
         admin_id = _insert_user(conn, ADMIN_USER, role="admin")
-        print(f"      ✓ Admin: {ADMIN_USER['full_name']} (id={admin_id})")
+        print(f"      admin: {ADMIN_USER['full_name']} (id={admin_id})")
 
         # 2. Insert faculty
         print("\n[2/4] Inserting 1 test faculty user ...")
         for u in FACULTY_USERS:
             uid = _insert_user(conn, u, role="faculty")
-            print(f"      ✓ Faculty: {u['full_name']} (id={uid})")
+            print(f"      Faculty: {u['full_name']} (id={uid})")
 
         # 3. Insert students
         print("\n[3/4] Inserting 11 student users ...")
@@ -165,7 +165,7 @@ def seed() -> None:
         for u in STUDENT_USERS:
             uid = _insert_user(conn, u, role="student")
             student_ids.append(uid)
-            print(f"      ✓ Student: {u['full_name']} (id={uid})")
+            print(f"      Student: {u['full_name']} (id={uid})")
 
         # 4. Generate attendance rows (students only)
         print("\n[4/4] Generating 3 weeks of attendance data ...")
@@ -223,7 +223,7 @@ def seed() -> None:
                     confidence = excluded.confidence
             """
             execute_many(att_sql, attendance_rows)
-            print(f"      ✓ Inserted {len(attendance_rows)} attendance row(s):")
+            print(f"      Inserted {len(attendance_rows)} attendance row(s):")
             print(f"        Present: {present_count}  |  Late: {late_count}  "
                   f"|  Absent (skipped): {absent_count}")
         else:
