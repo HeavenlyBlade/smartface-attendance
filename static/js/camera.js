@@ -32,75 +32,22 @@
   var currentAbortController = null;
 
   /* -----------------------------------------------------------------------
-     Server overlay — bounding box + name/confidence from /api/recognize
+     Persistent bounding box state — updated by recognition, drawn by rAF loop
+  ----------------------------------------------------------------------- */
+  var lastBox      = null;   // {top, right, bottom, left} in display coords
+  var lastBoxLabel = '';     // name + confidence string
+  var lastBoxColor = '';     // green for known, red for unknown
+  var lastBoxTime  = 0;      // timestamp of last box update
+  var BOX_TIMEOUT_MS = 2500; // clear box if no update for 2.5 s
+
+  /* -----------------------------------------------------------------------
+     Canvas helpers
   ----------------------------------------------------------------------- */
   function syncCanvasSize() {
     if (!overlayCanvas || !video) return;
     var rect = video.getBoundingClientRect();
     if (overlayCanvas.width  !== rect.width)  overlayCanvas.width  = rect.width;
     if (overlayCanvas.height !== rect.height) overlayCanvas.height = rect.height;
-  }
-
-  function drawServerOverlay(faces) {
-    if (!overlayCtx || !overlayCanvas || !faces || !faces.length) return;
-
-    var scaleX = video && video.videoWidth  ? overlayCanvas.width  / video.videoWidth  : 1;
-    var scaleY = video && video.videoHeight ? overlayCanvas.height / video.videoHeight : 1;
-
-    faces.forEach(function(face) {
-      var bb      = face.bounding_box;
-      var isKnown = face.user_id !== null && face.user_id !== undefined;
-      var color   = isKnown ? '#4CAF82' : '#e57373';
-
-      var x = bb.left  * scaleX;
-      var y = bb.top   * scaleY;
-      var w = (bb.right  - bb.left) * scaleX;
-      var h = (bb.bottom - bb.top)  * scaleY;
-
-      // Solid bounding box for matched face
-      overlayCtx.save();
-      overlayCtx.strokeStyle = color;
-      overlayCtx.lineWidth   = OVERLAY_LINE_WIDTH + 1;
-      overlayCtx.shadowColor = color;
-      overlayCtx.shadowBlur  = 12;
-      overlayCtx.beginPath();
-      drawRoundedRect(overlayCtx, x, y, w, h, 10);
-      overlayCtx.stroke();
-      overlayCtx.restore();
-
-      // Name label with backdrop
-      var labelName = face.full_name || 'Unknown';
-      overlayCtx.save();
-      overlayCtx.font         = 'bold ' + OVERLAY_FONT_SIZE + ' Inter, Arial, sans-serif';
-      overlayCtx.textBaseline = 'bottom';
-      overlayCtx.textAlign    = 'left';
-      var lx = Math.max(x, 2);
-      var ly = Math.max(y - 6, 36);
-      var nm = overlayCtx.measureText(labelName);
-      var fp = parseInt(OVERLAY_FONT_SIZE, 10) || 32;
-      overlayCtx.fillStyle = isKnown ? 'rgba(76,175,130,0.85)' : 'rgba(239,68,68,0.85)';
-      _roundRect(overlayCtx, lx - 4, ly - fp - 4, nm.width + 16, fp + 10, 6);
-      overlayCtx.fill();
-      overlayCtx.fillStyle = '#fff';
-      overlayCtx.fillText(labelName, lx + 4, ly);
-      overlayCtx.restore();
-
-      // Confidence badge
-      if (face.confidence !== null && face.confidence !== undefined) {
-        var confText = face.confidence.toFixed(1) + '%';
-        overlayCtx.save();
-        overlayCtx.font         = 'bold 0.9rem Inter, Arial, sans-serif';
-        overlayCtx.fillStyle    = 'rgba(0,0,0,0.7)';
-        overlayCtx.textBaseline = 'top';
-        overlayCtx.textAlign    = 'right';
-        var cm = overlayCtx.measureText(confText);
-        _roundRect(overlayCtx, x + w - cm.width - 14, y + 6, cm.width + 10, 22, 4);
-        overlayCtx.fill();
-        overlayCtx.fillStyle = color;
-        overlayCtx.fillText(confText, x + w - 4, y + 9);
-        overlayCtx.restore();
-      }
-    });
   }
 
   function _roundRect(ctx, x, y, w, h, r) {
@@ -116,6 +63,52 @@
 
   function drawRoundedRect(ctx, x, y, w, h, r) {
     _roundRect(ctx, x, y, w, h, r);
+  }
+
+  /* -----------------------------------------------------------------------
+     Continuous drawing loop — runs every animation frame, never fetches
+  ----------------------------------------------------------------------- */
+  function drawLoop() {
+    if (overlayCtx && overlayCanvas) {
+      syncCanvasSize();
+      overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      if (lastBox !== null && (Date.now() - lastBoxTime) < BOX_TIMEOUT_MS) {
+        var scaleX = video && video.videoWidth  ? overlayCanvas.width  / video.videoWidth  : 1;
+        var scaleY = video && video.videoHeight ? overlayCanvas.height / video.videoHeight : 1;
+
+        var x = lastBox.left   * scaleX;
+        var y = lastBox.top    * scaleY;
+        var w = (lastBox.right  - lastBox.left) * scaleX;
+        var h = (lastBox.bottom - lastBox.top)  * scaleY;
+
+        // Bounding box stroke
+        overlayCtx.save();
+        overlayCtx.strokeStyle = lastBoxColor;
+        overlayCtx.lineWidth   = 2;
+        overlayCtx.beginPath();
+        overlayCtx.strokeRect(x, y, w, h);
+        overlayCtx.restore();
+
+        // Label — filled rectangle behind white text
+        if (lastBoxLabel) {
+          overlayCtx.save();
+          overlayCtx.font         = '14px Inter, sans-serif';
+          overlayCtx.textBaseline = 'bottom';
+          overlayCtx.textAlign    = 'left';
+          var lx = Math.max(x, 2);
+          var ly = Math.max(y - 4, 18);
+          var tm = overlayCtx.measureText(lastBoxLabel);
+          overlayCtx.fillStyle = lastBoxColor;
+          overlayCtx.fillRect(lx - 2, ly - 16, tm.width + 8, 20);
+          overlayCtx.fillStyle = '#ffffff';
+          overlayCtx.fillText(lastBoxLabel, lx + 2, ly);
+          overlayCtx.restore();
+        }
+      }
+    }
+
+    requestAnimationFrame(drawLoop);
   }
 
   /* -----------------------------------------------------------------------
@@ -219,9 +212,32 @@
     .then(function(data) {
       var faces = (data && Array.isArray(data.faces)) ? data.faces : [];
 
-      syncCanvasSize();
-      overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-      drawServerOverlay(faces);
+      // Update persistent bounding box state from the first detected face
+      if (faces.length > 0) {
+        // Pick the best face: prefer a recognized (user_id set) one
+        var face = null;
+        for (var i = 0; i < faces.length; i++) {
+          if (faces[i].user_id !== null && faces[i].user_id !== undefined) {
+            face = faces[i]; break;
+          }
+        }
+        if (!face) face = faces[0];
+
+        var bb = face.bounding_box;
+        // bounding_box values are already in full-frame coordinates (face_service scales by 2x)
+        lastBox      = { top: bb.top, right: bb.right, bottom: bb.bottom, left: bb.left };
+        lastBoxTime  = Date.now();
+
+        var isKnown = (face.user_id !== null && face.user_id !== undefined);
+        lastBoxColor = isKnown ? '#22c55e' : '#ef4444';
+        if (isKnown) {
+          lastBoxLabel = face.full_name + (face.confidence !== null && face.confidence !== undefined
+            ? ' ' + face.confidence.toFixed(1) + '%' : '');
+        } else {
+          lastBoxLabel = 'Unknown';
+        }
+      }
+      // No face: do NOT clear lastBox — BOX_TIMEOUT_MS handles natural fade-out
 
       updateFaceStatus(faces);
       updateStatusBar(faces);
@@ -281,6 +297,9 @@
       })
       .catch(function() { showCameraError(); });
   }
+
+  // Start the persistent drawing loop once
+  requestAnimationFrame(drawLoop);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startCamera);
