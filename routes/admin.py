@@ -242,7 +242,7 @@ def delete_biometric_route(user_id: int):
     try:
         # 1. Delete face_encodings rows
         execute_query(
-            "DELETE FROM face_encodings WHERE user_id = %s",
+            "DELETE FROM face_encodings WHERE user_id = ?",
             params=(user_id,),
             commit=True,
         )
@@ -326,7 +326,7 @@ def delete_user_route(user_id: int):
             shutil.rmtree(sample_dir, ignore_errors=True)
 
         # Delete from DB (CASCADE removes face_encodings and attendance)
-        execute_query("DELETE FROM users WHERE id = %s", params=(user_id,), commit=True)
+        execute_query("DELETE FROM users WHERE id = ?", params=(user_id,), commit=True)
 
         # Refresh encoding cache
         try:

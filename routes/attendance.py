@@ -59,11 +59,11 @@ def dashboard():
     import json as _json
     try:
         present_count = (execute_query(
-            "SELECT COUNT(*) AS cnt FROM attendance WHERE date=%s AND status='present'",
+            "SELECT COUNT(*) AS cnt FROM attendance WHERE date=? AND status='present'",
             params=(today,), fetchone=True) or {}).get("cnt", 0)
 
         late_count = (execute_query(
-            "SELECT COUNT(*) AS cnt FROM attendance WHERE date=%s AND status='late'",
+            "SELECT COUNT(*) AS cnt FROM attendance WHERE date=? AND status='late'",
             params=(today,), fetchone=True) or {}).get("cnt", 0)
 
         total_users = (execute_query(
@@ -83,10 +83,10 @@ def dashboard():
             d = (date_type.today() - timedelta(days=i)).isoformat()
             chart_labels.append(d[5:])  # MM-DD
             p = (execute_query(
-                "SELECT COUNT(*) AS cnt FROM attendance WHERE date=%s AND status='present'",
+                "SELECT COUNT(*) AS cnt FROM attendance WHERE date=? AND status='present'",
                 params=(d,), fetchone=True) or {}).get("cnt", 0)
             l = (execute_query(
-                "SELECT COUNT(*) AS cnt FROM attendance WHERE date=%s AND status='late'",
+                "SELECT COUNT(*) AS cnt FROM attendance WHERE date=? AND status='late'",
                 params=(d,), fetchone=True) or {}).get("cnt", 0)
             chart_present.append(int(p))
             chart_late.append(int(l))
@@ -304,7 +304,7 @@ def manual_override():
         # Roll back: delete the row we just inserted/updated
         try:
             execute_query(
-                "DELETE FROM attendance WHERE user_id=%s AND date=%s AND status='manual'",
+                "DELETE FROM attendance WHERE user_id=? AND date=? AND status='manual'",
                 params=(target_user_id, target_date), commit=True,
             )
         except Exception:
@@ -328,7 +328,7 @@ def my_attendance():
     try:
         records = execute_query(
             "SELECT date, time_in, time_out, status "
-            "FROM attendance WHERE user_id=%s "
+            "FROM attendance WHERE user_id=? "
             "ORDER BY date DESC",
             params=(student_id,), fetchall=True,
         ) or []

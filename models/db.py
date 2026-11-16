@@ -1,122 +1,100 @@
 """
-models/db.py - PostgreSQL connection helpers for SmartFace (psycopg2)
+models/db.py — SQLite connection helpers for SmartFace
+
+Each thread gets its own connection via threading.local().
+Rows are returned as plain dicts (sqlite3.Row row_factory).
 """
-import logging, os, threading
-import psycopg2, psycopg2.extras, psycopg2.pool
-from contextlib import contextmanager
+import logging
+import os
+import sqlite3
+import threading
 
 logger = logging.getLogger(__name__)
-_pool = None
-_pool_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# DB path: %APPDATA%\SmartFace\smartface.db  (or ~/SmartFace/ on non-Windows)
+# ---------------------------------------------------------------------------
+_DB_PATH = os.path.join(
+    os.environ.get("APPDATA", os.path.expanduser("~")),
+    "SmartFace",
+    "smartface.db",
+)
+
+# Ensure the directory exists
+os.makedirs(os.path.dirname(_DB_PATH), exist_ok=True)
+
+# Thread-local storage for per-thread connections
+_local = threading.local()
 
 
-def _get_pool():
-    global _pool
-    if _pool is not None:
-        return _pool
-    with _pool_lock:
-        if _pool is not None:
-            return _pool
-        # H1 fix: when running under pytest (TESTING=true), prefer TEST_DATABASE_URL
-        # so tests never accidentally connect to the production Supabase instance.
-        if os.environ.get("TESTING", "").lower() == "true":
-            dsn = os.environ.get("TEST_DATABASE_URL")
-            if not dsn:
-                # Fall back to individual DB_* vars (existing path); allows the
-                # test DB to be specified via DB_NAME=smartface_test_db etc.
-                import config
-                dsn = (f"host={config.DB_HOST} port={config.DB_PORT} "
-                       f"dbname={config.DB_NAME} user={config.DB_USER} "
-                       f"password={config.DB_PASS} sslmode=require")
-        else:
-            dsn = os.environ.get("DATABASE_URL")
-            if not dsn:
-                import config
-                dsn = (f"host={config.DB_HOST} port={config.DB_PORT} "
-                       f"dbname={config.DB_NAME} user={config.DB_USER} "
-                       f"password={config.DB_PASS} sslmode=require")
-        logger.info("Initialising PostgreSQL connection pool")
-        _pool = psycopg2.pool.ThreadedConnectionPool(1, 5, dsn)
-    return _pool
-
-
-def get_connection():
-    return _get_pool().getconn()
-
-
-def release_connection(conn):
-    # Always rollback before returning to pool to clear any open transaction
-    try:
-        conn.rollback()
-    except Exception:
-        pass
-    _get_pool().putconn(conn)
-
-
-@contextmanager
-def _managed_connection():
-    conn = get_connection()
-    try:
-        yield conn
-    finally:
-        release_connection(conn)
+def get_connection() -> sqlite3.Connection:
+    """Return (or create) the sqlite3 connection for the current thread."""
+    if not getattr(_local, "conn", None):
+        conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        _local.conn = conn
+    return _local.conn
 
 
 def execute_query(sql, params=(), fetchone=False, fetchall=False, commit=False):
-    with _managed_connection() as conn:
-        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        try:
-            is_insert = sql.strip().upper().startswith("INSERT")
+    """
+    Execute a single SQL statement.
 
-            # For INSERT with commit, append RETURNING id to get the new PK
-            exec_sql = sql
-            if commit and is_insert and "RETURNING" not in sql.upper():
-                exec_sql = sql.rstrip().rstrip(";") + " RETURNING id"
+    Parameters
+    ----------
+    sql        : str   — SQL statement with ? placeholders
+    params     : tuple — bind parameters
+    fetchone   : bool  — return one dict or None
+    fetchall   : bool  — return list of dicts
+    commit     : bool  — commit after execute; on INSERT returns lastrowid
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        is_insert = sql.strip().upper().startswith("INSERT")
+        cur.execute(sql, params)
 
-            cur.execute(exec_sql, params)
+        if fetchall:
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
 
-            if fetchall:
-                rows = cur.fetchall()
-                conn.rollback()  # end transaction cleanly
-                return [dict(r) for r in rows]
+        if fetchone:
+            row = cur.fetchone()
+            return dict(row) if row else None
 
-            if fetchone:
-                row = cur.fetchone()
-                conn.rollback()  # end transaction cleanly
-                return dict(row) if row else None
-
-            if commit:
-                if is_insert and "RETURNING" in exec_sql.upper():
-                    row = cur.fetchone()  # fetch BEFORE commit
-                    conn.commit()
-                    return row["id"] if row else None
-                conn.commit()
-                return None
-
+        if commit:
+            conn.commit()
+            if is_insert and not fetchone and not fetchall:
+                return cur.lastrowid
             return None
 
-        except Exception as exc:
-            logger.error("execute_query error: %s | sql: %.120s", exc, sql)
-            try:
-                conn.rollback()
-            except Exception:
-                pass
-            raise
-        finally:
-            cur.close()
+        return None
+
+    except Exception as exc:
+        logger.error("execute_query error: %s | sql: %.120s", exc, sql)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        cur.close()
 
 
 def execute_many(sql, params_list):
+    """Execute a parameterized statement for each row in params_list, then commit."""
     if not params_list:
         return
-    with _managed_connection() as conn:
-        cur = conn.cursor()
-        try:
-            cur.executemany(sql, params_list)
-            conn.commit()
-        except Exception as exc:
-            logger.error("execute_many error: %s", exc)
-            conn.rollback()
-            raise
-        finally:
-            cur.close()
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.executemany(sql, params_list)
+        conn.commit()
+    except Exception as exc:
+        logger.error("execute_many error: %s", exc)
+        conn.rollback()
+        raise
+    finally:
+        cur.close()

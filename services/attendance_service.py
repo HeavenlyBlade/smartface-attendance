@@ -178,7 +178,7 @@ def log_attendance(user_id: int, confidence: float) -> dict:
     # ------------------------------------------------------------------
     sql = (
         "INSERT INTO attendance (user_id, date, time_in, status, confidence) "
-        "VALUES (%s, %s, %s, %s, %s) "
+        "VALUES (?, ?, ?, ?, ?) "
         "ON CONFLICT (user_id, date) DO UPDATE SET "
         "time_out = EXCLUDED.time_in, "
         "confidence = EXCLUDED.confidence"

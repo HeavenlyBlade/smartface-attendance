@@ -224,7 +224,7 @@ def classify_face_match(distance: float, user_id=None, full_name=None) -> dict:
 def _get_user_name(user_id: int) -> str:
     try:
         from models.db import execute_query
-        row = execute_query("SELECT full_name FROM users WHERE id = %s",
+        row = execute_query("SELECT full_name FROM users WHERE id = ?",
                             params=(user_id,), fetchone=True)
         return row["full_name"] if row else f"User#{user_id}"
     except Exception as exc:

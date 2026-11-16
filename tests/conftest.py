@@ -3,8 +3,7 @@ tests/conftest.py — pytest configuration and shared fixtures for SmartFace.
 
 Fixtures
 --------
-test_app    Flask test client (TESTING=True, real DB with smartface_test_db if
-            available, otherwise falls back to the configured smartface_db).
+test_app    Flask test client (TESTING=True, SQLite in-memory or APPDATA path).
 auth_client Wraps test_app with a set_session() helper that injects session
             variables via client.session_transaction().
 
@@ -18,10 +17,6 @@ import os
 import sys
 from pathlib import Path
 
-# H1 fix: signal to models/db.py that we are in test mode so it uses
-# TEST_DATABASE_URL (or the DB_* vars) instead of the production DATABASE_URL.
-# Set TEST_DATABASE_URL env var pointing at a real PostgreSQL test database
-# to run integration tests without mocks.
 os.environ.setdefault("TESTING", "true")
 
 import pytest
@@ -64,16 +59,11 @@ def test_app():
             response = test_app.get('/login')
             assert response.status_code == 200
     """
-    # Tell config to use the test database.  This must happen before create_app
-    # imports config, so we set the env var directly.
-    os.environ.setdefault("DB_NAME", "smartface_test_db")
-
     from app import create_app
 
     app = create_app()
     app.config["TESTING"] = True
     app.config["SECRET_KEY"] = "test-secret-key"
-    app.config["DB_NAME"] = "smartface_test_db"
 
     with app.test_client() as client:
         with app.app_context():

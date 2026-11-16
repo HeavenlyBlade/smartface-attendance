@@ -160,7 +160,7 @@ def change_password():
     from werkzeug.security import generate_password_hash
     from models.db import execute_query as _eq
     _eq(
-        'UPDATE users SET password_hash = %s, must_change_password = 0 WHERE id = %s',
+        'UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?',
         params=(generate_password_hash(new_password), session['user_id']),
         commit=True,
     )

@@ -1,35 +1,36 @@
--- SmartFace PostgreSQL Schema (Supabase)
--- Run this in Supabase SQL Editor before first deploy
+-- SQLite foreign key enforcement
+PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS users (
-    id            SERIAL PRIMARY KEY,
-    full_name     VARCHAR(150) NOT NULL,
-    email         VARCHAR(150) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    role          VARCHAR(20) NOT NULL DEFAULT 'student'
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name     TEXT NOT NULL,
+    email         TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'student'
                   CHECK (role IN ('admin','faculty','student')),
-    id_number     VARCHAR(50) UNIQUE,
-    department    VARCHAR(100),
-    consent_given SMALLINT NOT NULL DEFAULT 0,
-    is_active     SMALLINT NOT NULL DEFAULT 1,
+    id_number     TEXT UNIQUE,
+    department    TEXT,
+    consent_given INTEGER NOT NULL DEFAULT 0,
+    is_active     INTEGER NOT NULL DEFAULT 1,
+    must_change_password INTEGER NOT NULL DEFAULT 0,
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS face_encodings (
-    id         SERIAL PRIMARY KEY,
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    encoding   BYTEA NOT NULL,
-    sample_no  SMALLINT NOT NULL,
+    encoding   BLOB NOT NULL,
+    sample_no  INTEGER NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS attendance (
-    id         SERIAL PRIMARY KEY,
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     date       DATE NOT NULL,
     time_in    TIME,
     time_out   TIME,
-    status     VARCHAR(10) NOT NULL DEFAULT 'present'
+    status     TEXT NOT NULL DEFAULT 'present'
                CHECK (status IN ('present','late','absent','manual')),
     confidence FLOAT,
     marked_by  INT,
@@ -38,10 +39,10 @@ CREATE TABLE IF NOT EXISTS attendance (
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (
-    id         SERIAL PRIMARY KEY,
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INT,
-    action     VARCHAR(255) NOT NULL,
+    action     TEXT NOT NULL,
     details    TEXT,
-    ip_address VARCHAR(45),
+    ip_address TEXT,
     timestamp  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

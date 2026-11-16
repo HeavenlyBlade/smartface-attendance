@@ -2,7 +2,7 @@
 # Run: py -3.11 -m pip install -r requirements-local.txt
 
 Flask==3.0.3
-psycopg2-binary==2.9.9
+pyinstaller>=6.0
 dlib-bin==20.0.1
 opencv-python==4.10.0.84
 numpy==1.26.4
