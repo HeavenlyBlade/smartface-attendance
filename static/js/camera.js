@@ -1,6 +1,6 @@
 /**
  * static/js/camera.js  — SmartFace Kiosk
- * 500ms capture interval, face mesh overlay, CNN-backed recognition
+ * 800ms capture interval, CNN-backed recognition, no MediaPipe FaceMesh
  */
 (function () {
   'use strict';
@@ -11,7 +11,7 @@
   var OVERLAY_FONT_SIZE    = cfg.overlayFontSize  || '2rem';
   var OVERLAY_LINE_WIDTH   = cfg.overlayLineWidth || 3;
   var CAPTURE_QUALITY      = cfg.captureQuality   || 0.7;
-  var CAPTURE_INTERVAL_MS  = cfg.captureIntervalMs || 500;   // 500ms
+  var CAPTURE_INTERVAL_MS  = cfg.captureIntervalMs || 800;   // 800ms
 
   /* DOM */
   var video             = document.getElementById('kiosk-video');
@@ -26,184 +26,10 @@
   var overlayCtx        = overlayCanvas ? overlayCanvas.getContext('2d') : null;
 
   /* State */
-  var pending      = false;
+  var processing   = false;
   var audioPlaying = false;
-  var lastFaces    = [];
-
-  /* -----------------------------------------------------------------------
-     MediaPipe FaceMesh — facial landmark scanner overlay
-  ----------------------------------------------------------------------- */
-  var faceMesh     = null;
-  var meshCanvas   = document.createElement('canvas');
-  var meshCtx      = meshCanvas.getContext('2d');
-  var meshAnimFrame = null;
-  var meshRunning  = false;
-
-  function initFaceMesh() {
-    if (typeof FaceMesh === 'undefined') return;
-    faceMesh = new FaceMesh({
-      locateFile: function(file) {
-        return 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/' + file;
-      }
-    });
-    faceMesh.setOptions({
-      maxNumFaces: 4,
-      refineLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-    faceMesh.onResults(onMeshResults);
-    startMeshLoop();
-  }
-
-  function startMeshLoop() {
-    meshRunning = true;
-    function loop() {
-      if (!meshRunning || !video || video.readyState < 2) {
-        meshAnimFrame = requestAnimationFrame(loop);
-        return;
-      }
-      if (faceMesh) {
-        faceMesh.send({ image: video }).catch(function() {});
-      }
-      meshAnimFrame = requestAnimationFrame(loop);
-    }
-    loop();
-  }
-
-  var _scanPhase = 0;  // for scanning animation
-
-  function onMeshResults(results) {
-    if (!overlayCanvas || !overlayCtx) return;
-
-    syncCanvasSize();
-    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-    var faces = results.multiFaceLandmarks || [];
-
-    if (faces.length > 0) {
-      _scanPhase = (_scanPhase + 3) % 360;
-      faces.forEach(function(landmarks) {
-        drawFaceMesh(landmarks);
-      });
-    }
-
-    // Draw server-side bounding boxes + name labels on top
-    if (lastFaces && lastFaces.length > 0) {
-      drawServerOverlay(lastFaces);
-    }
-  }
-
-  var FACE_OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,
-                   397,365,379,378,400,377,152,148,176,149,150,136,
-                   172,58,132,93,234,127,162,21,54,103,67,109];
-
-  var FACE_CONTOURS = [
-    [33,7,163,144,145,153,154,155,133],   // left eye
-    [362,382,381,380,374,373,390,249,263], // right eye
-    [61,185,40,39,37,0,267,269,270,409,291,308,415,310,311,312,13,82,81,80,191,78], // lips outline
-  ];
-
-  function drawFaceMesh(landmarks) {
-    var W = overlayCanvas.width;
-    var H = overlayCanvas.height;
-
-    // Calculate face bounding box for corner brackets
-    var xs = landmarks.map(function(l) { return l.x * W; });
-    var ys = landmarks.map(function(l) { return l.y * H; });
-    var x1 = Math.min.apply(null, xs), x2 = Math.max.apply(null, xs);
-    var y1 = Math.min.apply(null, ys), y2 = Math.max.apply(null, ys);
-    var pad = 18;
-    x1 -= pad; y1 -= pad; x2 += pad; y2 += pad;
-    var fw = x2 - x1, fh = y2 - y1;
-
-    // --- Scan line animation ---
-    var scanY = y1 + (fh * ((_scanPhase % 180) / 180));
-    overlayCtx.save();
-    var scanGrad = overlayCtx.createLinearGradient(x1, scanY - 4, x1, scanY + 4);
-    scanGrad.addColorStop(0, 'rgba(76,175,130,0)');
-    scanGrad.addColorStop(0.5, 'rgba(76,175,130,0.7)');
-    scanGrad.addColorStop(1, 'rgba(76,175,130,0)');
-    overlayCtx.fillStyle = scanGrad;
-    overlayCtx.fillRect(x1, scanY - 4, fw, 8);
-    overlayCtx.restore();
-
-    // --- Face oval (dotted mesh) ---
-    overlayCtx.save();
-    overlayCtx.strokeStyle = 'rgba(76,175,130,0.5)';
-    overlayCtx.lineWidth   = 1;
-    overlayCtx.setLineDash([2, 3]);
-    overlayCtx.beginPath();
-    FACE_OVAL.forEach(function(idx, i) {
-      var lm = landmarks[idx];
-      var x = lm.x * W, y = lm.y * H;
-      if (i === 0) overlayCtx.moveTo(x, y);
-      else overlayCtx.lineTo(x, y);
-    });
-    overlayCtx.closePath();
-    overlayCtx.stroke();
-    overlayCtx.restore();
-
-    // --- Feature contours (eyes, lips) ---
-    FACE_CONTOURS.forEach(function(contour) {
-      overlayCtx.save();
-      overlayCtx.strokeStyle = 'rgba(212,175,55,0.65)';
-      overlayCtx.lineWidth = 1;
-      overlayCtx.setLineDash([]);
-      overlayCtx.beginPath();
-      contour.forEach(function(idx, i) {
-        var lm = landmarks[idx];
-        var x = lm.x * W, y = lm.y * H;
-        if (i === 0) overlayCtx.moveTo(x, y);
-        else overlayCtx.lineTo(x, y);
-      });
-      overlayCtx.closePath();
-      overlayCtx.stroke();
-      overlayCtx.restore();
-    });
-
-    // --- Key landmark dots (eyes, nose tip, mouth corners) ---
-    var keyPoints = [33, 263, 1, 61, 291, 199];
-    keyPoints.forEach(function(idx) {
-      var lm = landmarks[idx];
-      overlayCtx.save();
-      overlayCtx.beginPath();
-      overlayCtx.arc(lm.x * W, lm.y * H, 2.5, 0, Math.PI * 2);
-      overlayCtx.fillStyle = '#4CAF82';
-      overlayCtx.fill();
-      overlayCtx.restore();
-    });
-
-    // --- Corner brackets ---
-    var cLen = Math.min(fw, fh) * 0.2;
-    var cW   = 3;
-    var corners = [
-      [x1,    y1,    cLen, 0,    0,    cLen],   // top-left
-      [x2,    y1,    -cLen,0,    0,    cLen],   // top-right
-      [x1,    y2,    cLen, 0,    0,    -cLen],  // bottom-left
-      [x2,    y2,    -cLen,0,    0,    -cLen],  // bottom-right
-    ];
-    overlayCtx.save();
-    overlayCtx.strokeStyle = '#4CAF82';
-    overlayCtx.lineWidth   = cW;
-    overlayCtx.setLineDash([]);
-    corners.forEach(function(c) {
-      overlayCtx.beginPath();
-      overlayCtx.moveTo(c[0] + c[2], c[1] + c[3]);
-      overlayCtx.lineTo(c[0], c[1]);
-      overlayCtx.lineTo(c[0] + c[4], c[1] + c[5]);
-      overlayCtx.stroke();
-    });
-    overlayCtx.restore();
-
-    // --- Scanning label ---
-    overlayCtx.save();
-    overlayCtx.font      = 'bold 11px Inter, Arial, sans-serif';
-    overlayCtx.fillStyle = '#4CAF82';
-    overlayCtx.textAlign = 'center';
-    overlayCtx.fillText('SCANNING...', (x1 + x2) / 2, y1 - 8);
-    overlayCtx.restore();
-  }
+  var captureTimer = null;
+  var currentAbortController = null;
 
   /* -----------------------------------------------------------------------
      Server overlay — bounding box + name/confidence from /api/recognize
@@ -355,11 +181,19 @@
   }
 
   /* -----------------------------------------------------------------------
-     Capture loop — 500ms
+     Capture loop — 800ms, with processing lock and AbortController
   ----------------------------------------------------------------------- */
   function captureTick() {
-    if (pending) return;
-    pending = true;
+    if (document.visibilityState === 'hidden') return;
+    if (processing) return;
+    processing = true;
+
+    // Abort any previous in-flight request and create a fresh controller
+    if (currentAbortController) {
+      currentAbortController.abort();
+    }
+    currentAbortController = new AbortController();
+    var signal = currentAbortController.signal;
 
     var cap = document.createElement('canvas');
     cap.width  = video.videoWidth  || 640;
@@ -378,31 +212,50 @@
     fetch(RECOGNIZE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: b64 })
+      body: JSON.stringify({ image: b64 }),
+      signal: signal
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var faces = (data && Array.isArray(data.faces)) ? data.faces : [];
-      lastFaces = faces;  // store for mesh overlay to draw on top
 
-      // If FaceMesh isn't running, draw server overlay directly
-      if (!faceMesh) {
-        syncCanvasSize();
-        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-        drawServerOverlay(faces);
-      }
+      syncCanvasSize();
+      overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+      drawServerOverlay(faces);
 
       updateFaceStatus(faces);
       updateStatusBar(faces);
       triggerAudioCue(faces);
-      pending = false;
+      processing = false;
     })
-    .catch(function() {
-      lastFaces = [];
+    .catch(function(err) {
+      // Ignore AbortError — it's intentional
+      if (err && err.name === 'AbortError') return;
+      processing = false;
       updateFaceStatus([]);
-      pending = false;
     });
   }
+
+  function startCaptureLoop() {
+    if (captureTimer !== null) return;
+    captureTimer = setInterval(captureTick, CAPTURE_INTERVAL_MS);
+  }
+
+  function stopCaptureLoop() {
+    if (captureTimer !== null) {
+      clearInterval(captureTimer);
+      captureTimer = null;
+    }
+  }
+
+  /* Pause when tab is hidden, resume when visible */
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+      stopCaptureLoop();
+    } else {
+      startCaptureLoop();
+    }
+  });
 
   /* -----------------------------------------------------------------------
      Camera init
@@ -423,10 +276,7 @@
         video.onloadedmetadata = function() {
           video.play();
           syncCanvasSize();
-          setInterval(captureTick, CAPTURE_INTERVAL_MS);
-
-          // Init FaceMesh after camera is live
-          setTimeout(function() { initFaceMesh(); }, 500);
+          startCaptureLoop();
         };
       })
       .catch(function() { showCameraError(); });

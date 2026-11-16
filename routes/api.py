@@ -256,6 +256,9 @@ def live_feed():
 @api_bp.route("/recognize", methods=["POST"])
 @role_required("admin", "faculty")
 def recognize():
+    if request.content_length is not None and request.content_length > 300 * 1024:
+        return jsonify({"status": "error", "message": "frame too large"}), 413
+
     data = request.get_json(silent=True) or {}
 
     image_b64 = data.get("image")
