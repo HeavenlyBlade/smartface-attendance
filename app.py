@@ -210,5 +210,10 @@ if __name__ == "__main__":
     # localhost or HTTPS, so this is necessary for non-localhost access.
     # app.run(host='0.0.0.0', port=5000, ssl_context='adhoc')  # LAN HTTPS
 
-    # use_reloader=False is REQUIRED — see module docstring for the reason.
-    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+    # use_reloader=False was previously required because Flask's reloader spawns
+    # a child process that does not inherit the in-memory encoding cache, causing
+    # every face to fall back to "Unknown". Waitress does not use a reloader, so
+    # the problem does not arise — and Waitress is multi-threaded, so opening the
+    # kiosk no longer blocks other browser tabs during recognition.
+    from waitress import serve
+    serve(app, host="0.0.0.0", port=5000, threads=8)

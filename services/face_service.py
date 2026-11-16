@@ -7,6 +7,7 @@ import base64
 import logging
 import os
 import threading
+import time
 from typing import Optional
 
 import cv2
@@ -87,6 +88,11 @@ def _frame_ear(gray) -> float:
 _liveness: dict = {}
 _EAR_THRESH = 0.22   # below this = eyes closed
 _EAR_FRAMES = 2      # consecutive closed frames = blink confirmed
+
+# ---------------------------------------------------------------------------
+# No-face cooldown — skip detection for 400 ms after a no-face result
+# ---------------------------------------------------------------------------
+_last_no_face_time: float = 0.0
 
 def reset_liveness_state(uid=None):
     """Reset blink state. uid=None resets all users."""
@@ -233,8 +239,14 @@ def _get_user_name(user_id: int) -> str:
 
 
 def recognize_frame(image_b64: str) -> list:
+    global _last_no_face_time
+
     if not FACE_RECOGNITION_AVAILABLE:
         logger.error("recognize_frame: face_recognition not available")
+        return []
+
+    # No-face cooldown: skip detection entirely for 400 ms after a no-face result
+    if time.time() - _last_no_face_time < 0.4:
         return []
 
     # Step 1: Decode base64 JPEG to numpy array
@@ -255,12 +267,14 @@ def recognize_frame(image_b64: str) -> list:
     rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
 
     # Step 4: Detect face bounding boxes in the downscaled frame
-    locs = face_recognition.face_locations(rgb, model="cnn")
+    # HOG is used here (was: cnn) — ~5-10x faster, CPU-only, good for real-time kiosk use
+    locs = face_recognition.face_locations(rgb, model="hog")
 
     # Step 5: Compute 128-dim facial encodings for each detected face
     encs = face_recognition.face_encodings(rgb, locs, num_jitters=3)
 
     if not locs:
+        _last_no_face_time = time.time()
         return []
 
     with _cache_lock:
