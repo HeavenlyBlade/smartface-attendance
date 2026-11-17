@@ -93,8 +93,9 @@
      drawServerBox — renders the server-sourced bounding box + label onto ctx.
      Called every frame by landmarkLoop after clearing the canvas.
   ----------------------------------------------------------------------- */
-  function drawServerBox(ctx, scaleX, scaleY) {
+  function drawServerBox(ctx, scaleX, scaleY, drawLabel) {
     if (lastBox === null || (Date.now() - lastBoxTime) >= BOX_TIMEOUT_MS) return;
+    if (drawLabel === undefined) drawLabel = true;
 
     var pad = 15;
     var x = lastBox.left   * scaleX - pad;
@@ -110,8 +111,8 @@
     ctx.strokeRect(x, y, w, h);
     ctx.restore();
 
-    // Label — filled rectangle behind white text
-    if (lastBoxLabel) {
+    // Label drawn only when requested (needs unmirrored ctx)
+    if (drawLabel && lastBoxLabel) {
       ctx.save();
       ctx.font         = '14px Inter, sans-serif';
       ctx.textBaseline = 'bottom';
@@ -125,6 +126,31 @@
       ctx.fillText(lastBoxLabel, lx + 2, ly);
       ctx.restore();
     }
+  }
+
+  // Draw the label in unmirrored canvas space so text reads correctly
+  function drawServerBoxLabel(ctx, scaleX, scaleY) {
+    if (lastBox === null || (Date.now() - lastBoxTime) >= BOX_TIMEOUT_MS) return;
+    if (!lastBoxLabel) return;
+
+    var pad = 15;
+    var cw  = landmarkCanvas.width;
+    // Mirror x back: box was drawn at x in mirrored space, which maps to cw-(x+w) in normal space
+    var rawX = lastBox.left  * scaleX - pad;
+    var rawW = (lastBox.right - lastBox.left) * scaleX + pad * 2;
+    var labelX = cw - rawX - rawW;  // left edge of box in unmirrored space
+    var labelY = Math.max(lastBox.top * scaleY - pad - 4, 18);
+
+    ctx.save();
+    ctx.font         = '14px Inter, sans-serif';
+    ctx.textBaseline = 'bottom';
+    ctx.textAlign    = 'left';
+    var tm = ctx.measureText(lastBoxLabel);
+    ctx.fillStyle = lastBoxColor;
+    ctx.fillRect(labelX - 2, labelY - 16, tm.width + 8, 20);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(lastBoxLabel, labelX + 2, labelY);
+    ctx.restore();
   }
 
   /* -----------------------------------------------------------------------
@@ -203,12 +229,13 @@
     landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
 
     // Mirror the canvas drawing context to match the CSS-mirrored video
+    // Draw box and skeleton inside mirror transform, then restore for text label
     landmarkCtx.save();
     landmarkCtx.translate(landmarkCanvas.width, 0);
     landmarkCtx.scale(-1, 1);
 
-    // Draw server bounding box (from last /api/recognize response)
-    drawServerBox(landmarkCtx, scaleX, scaleY);
+    // Draw server bounding box stroke only (no label — drawn after restore)
+    drawServerBox(landmarkCtx, scaleX, scaleY, false);
 
     // Draw landmarks from last face-api.js detection
     latestDetections.forEach(function(det) {
@@ -216,6 +243,9 @@
     });
 
     landmarkCtx.restore();
+
+    // Draw label in normal (unmirrored) coordinates so text reads correctly
+    drawServerBoxLabel(landmarkCtx, scaleX, scaleY);
 
     // Fire async detection only when models ready, video live, and no detection in flight
     if (faceApiReady && video.readyState >= 2 && !document.hidden && !detectingNow) {
