@@ -1,5 +1,5 @@
 """
-database/seed.py — SmartFace development seed data
+database/seed.py SmartFace development seed data
 ====================================================
 Populates the SQLite database with:
   - 1 admin + 1 test_faculty + 11 BSIT students  (13 users total)
@@ -7,9 +7,9 @@ Populates the SQLite database with:
   - consent_given = 1  (RA 10173 compliance)
   - 3 weeks (21 calendar days) of attendance data for students, skipping
     weekends.  Per student per weekday:
-      70% — present  (time_in 07:00–07:59, status='present')
-      15% — late     (time_in 08:01–09:30, status='late')
-      15% — absent   (no row inserted)
+      70% present  (time_in 07:007:59, status='present')
+      15% late     (time_in 08:019:30, status='late')
+      15% absent   (no row inserted)
 
 Run from the SmartFace project root:
     python database/seed.py
@@ -48,7 +48,7 @@ CONFIDENCE_MAX = 98.0
 
 # fmt: off
 ADMIN_USER = {
-    "full_name":  "Maria Santos",
+    "full_name":  "Carl",
     "email":      ADMIN_EMAIL,
     "role":       "admin",
     "id_number":  "SACLI-2024-0001",
@@ -131,7 +131,7 @@ def seed() -> None:
     random.seed(SEED_RANDOM)
 
     print("=" * 60)
-    print("SmartFace — Database Seed Script")
+    print("SmartFace Database Seed Script")
     print("=" * 60)
 
     # Idempotency check
@@ -141,7 +141,7 @@ def seed() -> None:
         fetchone=True,
     )
     if existing:
-        print(f"[SKIP] Admin '{ADMIN_EMAIL}' already exists — seed already run.")
+        print(f"[SKIP] Admin '{ADMIN_EMAIL}' already exists seed already run.")
         print("       Delete all rows from `users` and `attendance` to re-seed.")
         return
 
@@ -159,86 +159,20 @@ def seed() -> None:
             uid = _insert_user(conn, u, role="faculty")
             print(f"      Faculty: {u['full_name']} (id={uid})")
 
-        # 3. Insert students
-        print("\n[3/4] Inserting 11 student users ...")
-        student_ids: list = []
-        for u in STUDENT_USERS:
-            uid = _insert_user(conn, u, role="student")
-            student_ids.append(uid)
-            print(f"      Student: {u['full_name']} (id={uid})")
 
-        # 4. Generate attendance rows (students only)
-        print("\n[4/4] Generating 3 weeks of attendance data ...")
-        weekdays = _weekdays_for_last_3_weeks()
-        print(f"      Weekdays found: {len(weekdays)} days "
-              f"({weekdays[0]} – {weekdays[-1]})")
-
-        attendance_rows: list = []
-        present_count = late_count = absent_count = 0
-
-        for student_id in student_ids:
-            for day in weekdays:
-                roll = random.random()
-
-                if roll < 0.70:
-                    t_in = _random_time_in_range(7, 0, 7, 59)
-                    confidence = round(random.uniform(CONFIDENCE_MIN, CONFIDENCE_MAX), 2)
-                    attendance_rows.append((
-                        student_id,
-                        day.isoformat(),
-                        str(t_in),
-                        None,
-                        "present",
-                        confidence,
-                        None,
-                    ))
-                    present_count += 1
-
-                elif roll < 0.85:
-                    t_in = _random_time_in_range(8, 1, 9, 30)
-                    confidence = round(random.uniform(CONFIDENCE_MIN, CONFIDENCE_MAX), 2)
-                    attendance_rows.append((
-                        student_id,
-                        day.isoformat(),
-                        str(t_in),
-                        None,
-                        "late",
-                        confidence,
-                        None,
-                    ))
-                    late_count += 1
-
-                else:
-                    absent_count += 1
-
-        # Bulk-insert attendance rows
-        if attendance_rows:
-            att_sql = """
-                INSERT INTO attendance
-                    (user_id, date, time_in, time_out, status, confidence, marked_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (user_id, date) DO UPDATE SET
-                    time_in    = excluded.time_in,
-                    status     = excluded.status,
-                    confidence = excluded.confidence
-            """
-            execute_many(att_sql, attendance_rows)
-            print(f"      Inserted {len(attendance_rows)} attendance row(s):")
-            print(f"        Present: {present_count}  |  Late: {late_count}  "
-                  f"|  Absent (skipped): {absent_count}")
-        else:
-            print("      (no attendance rows generated — check weekday window)")
+        # Steps 3+4: no seeded students or attendance data.
+        # Enroll students via the web UI after first login.
 
         conn.commit()
-        print("\n" + "=" * 60)
-        print("Seed complete — all 13 users and attendance data inserted.")
-        print(f"\n  Admin login:  {ADMIN_EMAIL}")
-        print(f"  Password:     {DEFAULT_PASSWORD}")
-        print("=" * 60)
-
+        print('')
+        print('=' * 60)
+        print('Seed complete -- 2 users inserted (admin + test faculty).')
+        print(f'  Admin login:  {ADMIN_EMAIL}')
+        print(f'  Password:     {DEFAULT_PASSWORD}')
+        print('=' * 60)
     except Exception as exc:
         conn.rollback()
-        print(f"\n[ERROR] Seed failed — transaction rolled back.\n  {exc}")
+        print(f"\n[ERROR] Seed failed transaction rolled back.\n  {exc}")
         raise
 
 

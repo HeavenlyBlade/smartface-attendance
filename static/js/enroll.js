@@ -482,10 +482,11 @@
     var name = data.full_name || 'User';
     showToast(name + ' enrolled successfully!', 'success');
 
-    // Reset the form and capture state for the next enrollment
+    // Reset form, samples, and return to Step 1 for the next enrollment
     enrollForm.reset();
     clearAllSamples();
     resetSubmitButton();
+    goToStep1();
     updateUI();
   }
 
