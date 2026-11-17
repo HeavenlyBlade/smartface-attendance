@@ -111,6 +111,41 @@
   }
 
   /* -----------------------------------------------------------------------
+     computeBlurScore -- client-side Laplacian variance blur detection.
+     Matches the server-side check in face_service.py so the user gets
+     immediate feedback before the sample is accepted.
+     Returns a variance score: higher = sharper. Threshold is 30.
+  ----------------------------------------------------------------------- */
+  function computeBlurScore(ctx, w, h) {
+    var imageData = ctx.getImageData(0, 0, w, h);
+    var data = imageData.data;
+    var gray = new Float32Array(w * h);
+
+    // Convert to grayscale
+    for (var i = 0; i < w * h; i++) {
+      gray[i] = 0.299 * data[i*4] + 0.587 * data[i*4+1] + 0.114 * data[i*4+2];
+    }
+
+    // Apply Laplacian kernel [0,1,0 / 1,-4,1 / 0,1,0] and compute variance
+    var lap = new Float32Array(w * h);
+    for (var y = 1; y < h - 1; y++) {
+      for (var x = 1; x < w - 1; x++) {
+        var idx = y * w + x;
+        lap[idx] = gray[(y-1)*w+x] + gray[(y+1)*w+x] +
+                   gray[y*w+(x-1)] + gray[y*w+(x+1)] -
+                   4 * gray[idx];
+      }
+    }
+
+    // Compute variance of Laplacian
+    var sum = 0, sumSq = 0, n = w * h;
+    for (var k = 0; k < n; k++) { sum += lap[k]; }
+    var mean = sum / n;
+    for (var k = 0; k < n; k++) { sumSq += (lap[k] - mean) * (lap[k] - mean); }
+    return sumSq / n;
+  }
+
+  /* -----------------------------------------------------------------------
      Sample capture
   ----------------------------------------------------------------------- */
 
@@ -133,6 +168,21 @@
     canvas.height = video.videoHeight || 480;
     var ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // ---- Client-side blur check (Laplacian variance on grayscale) ----
+    var blurScore = computeBlurScore(ctx, canvas.width, canvas.height);
+    var BLUR_THRESHOLD = 30;
+    if (blurScore < BLUR_THRESHOLD) {
+      showToast(
+        'Sample looks blurry (score ' + blurScore.toFixed(0) + '). ' +
+        'Hold still and ensure good lighting, then try again.',
+        'error'
+      );
+      // Flash the capture button red briefly to signal the rejection
+      captureBtn.classList.add('blur-rejected');
+      setTimeout(function() { captureBtn.classList.remove('blur-rejected'); }, 800);
+      return;
+    }
 
     // Export as JPEG data-URL
     var dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
@@ -597,6 +647,27 @@
 
   // Initialise UI badges (all pending, no samples, no consent)
   updateUI();
+
+  // Live blur meter -- updates every 500ms so user can see sharpness in real time
+  var blurIndicator = document.getElementById('blur-indicator');
+  setInterval(function() {
+    if (!video || video.readyState < 2 || !blurIndicator) return;
+    var c = document.createElement('canvas');
+    c.width = 160; c.height = 120;  // small sample for speed
+    var cx = c.getContext('2d');
+    cx.drawImage(video, 0, 0, c.width, c.height);
+    var score = computeBlurScore(cx, c.width, c.height);
+    if (score >= 30) {
+      blurIndicator.textContent = 'Sharpness: Good (' + score.toFixed(0) + ')';
+      blurIndicator.style.color = 'var(--color-success, #22c55e)';
+    } else if (score >= 15) {
+      blurIndicator.textContent = 'Sharpness: Fair (' + score.toFixed(0) + ') -- hold still';
+      blurIndicator.style.color = '#f59e0b';
+    } else {
+      blurIndicator.textContent = 'Sharpness: Poor (' + score.toFixed(0) + ') -- hold still';
+      blurIndicator.style.color = '#ef4444';
+    }
+  }, 500);
 
   // Start the webcam stream
   startCamera();
