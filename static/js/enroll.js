@@ -83,6 +83,8 @@
         video.srcObject = stream;
         video.onloadedmetadata = function () {
           video.play();
+          // Start landmark loop once video is live
+          loadEnrollFaceApi().then(function() { enrollLandmarkLoop(); });
           // Hide initialising label once stream is live
           if (initLabel) initLabel.style.display = 'none';
           // Enable capture controls unless the sample cap is already reached
@@ -600,4 +602,88 @@
   // Start the webcam stream
   startCamera();
 
+
+  /* -----------------------------------------------------------------------
+     face-api.js landmark skeleton on enroll webcam
+  ----------------------------------------------------------------------- */
+  var enrollFaceApiReady  = false;
+  var enrollLatest        = [];
+  var MODELS_PATH         = '/static/models';
+  var enrollLandmarkCanvas = document.getElementById('face-detect-canvas');
+  var enrollLandmarkCtx   = enrollLandmarkCanvas ? enrollLandmarkCanvas.getContext('2d') : null;
+
+  async function loadEnrollFaceApi() {
+    try {
+      if (typeof faceapi === 'undefined') return;
+      await faceapi.nets.tinyFaceDetector.loadFromUri(MODELS_PATH);
+      await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODELS_PATH);
+      enrollFaceApiReady = true;
+    } catch(e) {
+      console.warn('enroll face-api load failed:', e);
+    }
+  }
+
+  function drawEnrollSkeleton(ctx, pts) {
+    if (!pts || pts.length < 68) return;
+    function pt(i) { return { x: pts[i].x, y: pts[i].y }; }
+    function drawRegion(indices, close) {
+      ctx.beginPath();
+      ctx.moveTo(pt(indices[0]).x, pt(indices[0]).y);
+      for (var i = 1; i < indices.length; i++) ctx.lineTo(pt(indices[i]).x, pt(indices[i]).y);
+      if (close) ctx.closePath();
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(0, 220, 255, 0.75)';
+    ctx.lineWidth = 1.2;
+    drawRegion([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], false);
+    drawRegion([17,18,19,20,21], false);
+    drawRegion([22,23,24,25,26], false);
+    drawRegion([27,28,29,30], false);
+    drawRegion([30,31,32,33,34,35,30], false);
+    drawRegion([36,37,38,39,40,41], true);
+    drawRegion([42,43,44,45,46,47], true);
+    drawRegion([48,49,50,51,52,53,54,55,56,57,58,59], true);
+    drawRegion([60,61,62,63,64,65,66,67], true);
+    ctx.fillStyle = 'rgba(0, 255, 220, 0.9)';
+    for (var i = 0; i < 68; i++) {
+      var p = pt(i);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function enrollLandmarkLoop() {
+    requestAnimationFrame(enrollLandmarkLoop);
+    if (!enrollLandmarkCtx || !enrollLandmarkCanvas || !video) return;
+
+    // Sync canvas to video display size
+    var rect = video.getBoundingClientRect();
+    if (rect.width > 0 && enrollLandmarkCanvas.width !== rect.width) enrollLandmarkCanvas.width = rect.width;
+    if (rect.height > 0 && enrollLandmarkCanvas.height !== rect.height) enrollLandmarkCanvas.height = rect.height;
+
+    // Clear canvas
+    enrollLandmarkCtx.clearRect(0, 0, enrollLandmarkCanvas.width, enrollLandmarkCanvas.height);
+
+    // Draw stored landmarks
+    enrollLatest.forEach(function(det) {
+      drawEnrollSkeleton(enrollLandmarkCtx, det.landmarks.positions);
+    });
+
+    // Fire async detection
+    if (enrollFaceApiReady && video.readyState >= 2) {
+      var dSize = { width: enrollLandmarkCanvas.width, height: enrollLandmarkCanvas.height };
+      if (dSize.width > 0 && dSize.height > 0) {
+        faceapi.matchDimensions(enrollLandmarkCanvas, dSize);
+        faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
+          inputSize: 320, scoreThreshold: 0.3
+        })).withFaceLandmarks(true).then(function(detections) {
+          var resolvedSize = { width: enrollLandmarkCanvas.width, height: enrollLandmarkCanvas.height };
+          if (resolvedSize.width > 0 && resolvedSize.height > 0) {
+            enrollLatest = faceapi.resizeResults(detections, resolvedSize);
+          }
+        });
+      }
+    }
+  }
 })();

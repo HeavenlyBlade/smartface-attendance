@@ -212,14 +212,19 @@
     // Fire async detection if models ready and video is live
     if (faceApiReady && video.readyState >= 2 && !document.hidden) {
       var displaySize = { width: landmarkCanvas.width, height: landmarkCanvas.height };
-      faceapi.matchDimensions(landmarkCanvas, displaySize);
-      faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
-        inputSize: 320,
-        scoreThreshold: 0.3
-      })).withFaceLandmarks(true).then(function(detections) {
-        // Only update stored results — drawing happens in the next rAF frame
-        latestDetections = faceapi.resizeResults(detections, displaySize);
-      });
+      if (displaySize.width > 0 && displaySize.height > 0) {
+        faceapi.matchDimensions(landmarkCanvas, displaySize);
+        faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
+          inputSize: 320,
+          scoreThreshold: 0.3
+        })).withFaceLandmarks(true).then(function(detections) {
+          // Re-read canvas size at resolve time (may differ from when detection was fired)
+          var resolvedSize = { width: landmarkCanvas.width, height: landmarkCanvas.height };
+          if (resolvedSize.width > 0 && resolvedSize.height > 0) {
+            latestDetections = faceapi.resizeResults(detections, resolvedSize);
+          }
+        });
+      }
     }
   }
 
@@ -405,13 +410,15 @@
           video.play();
           syncCanvasSize();
           startCaptureLoop();
+          // Start landmark loop only after video dimensions are known
+          landmarkLoop();
         };
       })
       .catch(function() { showCameraError(); });
   }
 
-  // Load face-api.js models then start the landmark loop (which owns all canvas drawing)
-  loadFaceApi().then(function() { landmarkLoop(); });
+  // Load face-api.js models (landmark loop starts after camera is ready)
+  loadFaceApi();
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startCamera);
