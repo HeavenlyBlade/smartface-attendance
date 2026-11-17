@@ -150,6 +150,7 @@
     display: block;
     z-index: 1;
     border-radius: 10px;
+    transform: scaleX(-1);
   }
 
   /* Canvas sits directly over the video — same size via JS resize */
@@ -161,6 +162,7 @@
     height: 100%;
     pointer-events: none;   /* clicks pass through to video */
     z-index: 2;
+    transform: scaleX(-1);
   }
 
   /* ---------------------------------------------------------------

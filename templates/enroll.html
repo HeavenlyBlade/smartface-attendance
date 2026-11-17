@@ -44,6 +44,7 @@
     border-radius: var(--radius-md);
     object-fit:    cover;
     display:       block;
+    transform:     scaleX(-1);
   }
 
   /* Overlay text shown while camera is initialising */
@@ -296,6 +297,7 @@
     width:          100%; height: 100%;
     pointer-events: none;
     border-radius:  var(--radius-md);
+    transform:      scaleX(-1);
   }
 
   /* Face status pill — floats at bottom of webcam view */
@@ -345,6 +347,98 @@
       position: static;
     }
   }
+
+  /* ================================================================
+     2-Step Wizard Styles
+  ================================================================ */
+
+  /* Step indicator bar */
+  .step-indicator {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1.5rem;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+  }
+
+  .step-indicator-item {
+    flex: 1;
+    padding: 0.65rem 1rem;
+    text-align: center;
+    font-size: 0.875rem;
+    font-weight: 600;
+    background: #f5f5f5;
+    color: var(--color-muted);
+    transition: background 0.2s, color 0.2s;
+  }
+
+  .step-indicator-item.active {
+    background: var(--color-primary);
+    color: #ffffff;
+  }
+
+  .step-indicator-item + .step-indicator-item {
+    border-left: 1px solid var(--color-border);
+  }
+
+  /* Wizard card wrapper */
+  .enroll-wizard-card {
+    max-width: 700px;
+    margin: 0 auto;
+    background: var(--color-white);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    padding: 2rem;
+  }
+
+  /* Video inside wizard — full width, taller */
+  .enroll-wizard-card #webcam-video {
+    width: 100%;
+    height: 420px;
+    object-fit: cover;
+    border-radius: 8px;
+    min-width: unset;
+    min-height: unset;
+  }
+
+  /* Large capture button */
+  .capture-btn-large {
+    width: 100%;
+    height: 52px;
+    font-size: 1.1rem;
+    margin-top: 0.75rem;
+  }
+
+  /* Step 2 read-only preview grid */
+  .step2-preview-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 1rem;
+  }
+
+  .step2-preview-grid img {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 2px solid var(--color-primary);
+  }
+
+  /* Next step button */
+  #next-step-btn {
+    width: 100%;
+    margin-top: 1rem;
+    height: 48px;
+    font-size: 1rem;
+  }
+
+  /* Back button */
+  #back-step-btn {
+    margin-bottom: 1rem;
+  }
 </style>
 {% endblock %}
 
@@ -361,313 +455,314 @@
     </p>
   </div>
 
-  {% if preselect_user %}
-  <p class="text-muted">Re-enrolling: <strong>{{ preselect_user.full_name }}</strong></p>
-  {% endif %}
+  <!-- Wizard card -->
+  <div class="enroll-wizard-card">
 
-  <!-- Main two-column layout -->
-  <div class="enroll-layout">
+    <!-- Step indicator -->
+    <div class="step-indicator" id="step-indicator">
+      <div class="step-indicator-item active" id="step-ind-1">Step 1 of 2 — Capture Face Samples</div>
+      <div class="step-indicator-item" id="step-ind-2">Step 2 of 2 — Fill Details</div>
+    </div>
 
     <!-- ================================================================
-         LEFT COLUMN — Registration form
+         STEP 1 — Camera + Capture
     ================================================================ -->
-    <div class="enroll-form-card">
+    <div id="enroll-step-1">
 
-      <div class="enroll-form-header">
-        <span class="header-icon" aria-hidden="true"></span>
-        <h2>User Information</h2>
+      {% if preselect_user %}
+      <p class="text-muted" style="margin-bottom:0.75rem;">
+        Re-enrolling: <strong>{{ preselect_user.full_name }}</strong>
+      </p>
+      {% endif %}
+
+      <!-- Webcam wrapper -->
+      <div class="webcam-video-wrapper">
+        <video
+          id="webcam-video"
+          autoplay
+          muted
+          playsinline
+          aria-label="Live webcam preview"
+          width="640"
+          height="480"
+        ></video>
+        <span id="webcam-initialising" aria-live="polite">
+          Requesting camera access…
+        </span>
+        <!-- Live face detection overlay -->
+        <canvas id="face-detect-canvas" aria-hidden="true"></canvas>
+        <!-- Face status pill -->
+        <div id="face-detect-status" class="no-face" aria-live="polite" aria-atomic="true">
+          Waiting for camera…
+        </div>
       </div>
 
-      <div class="enroll-form-body">
-        <!--
-          The form targets POST /api/enroll (JSON submission handled by
-          enroll.js, Task 2.5). The action/method here are fallback values
-          only; JavaScript intercepts and serialises as multipart or JSON.
-        -->
-        <form id="enroll-form" novalidate aria-label="User enrollment form">
+      <!-- Camera error panel -->
+      <div id="camera-error-panel" role="alert" aria-live="assertive">
+        <div class="error-icon" aria-hidden="true">&#128247;</div>
+        <h3>Camera Access Unavailable</h3>
+        <p>
+          SmartFace could not access your webcam. Face sample capture is
+          disabled until camera access is restored.
+        </p>
+        <ul>
+          <li>Check that a camera is physically connected.</li>
+          <li>
+            Allow camera access in your browser's permission pop-up or
+            site settings (click the camera icon in the address bar).
+          </li>
+          <li>
+            Make sure no other application (e.g. video call software) is
+            currently using the camera.
+          </li>
+          <li>
+            If accessing over a network, the page must be served over
+            <strong>HTTPS</strong> or <strong>localhost</strong>.
+          </li>
+        </ul>
+        <button
+          id="retry-camera-btn"
+          type="button"
+          class="btn btn-outline-primary mt-2"
+          aria-label="Retry camera access"
+        >
+          &#8635;&nbsp; Retry Camera
+        </button>
+      </div>
 
-          <!-- Full Name -->
-          <div class="form-group">
-            <label class="form-label" for="full-name">
-              Full Name <span class="required" aria-hidden="true">*</span>
-            </label>
-            <input
-              id="full-name"
-              name="full_name"
-              type="text"
-              class="form-control"
-              placeholder="e.g. Maria Santos"
-              minlength="1"
-              maxlength="100"
-              required
-              autocomplete="name"
-              aria-required="true"
-              aria-describedby="full-name-hint"
-            />
-            <span id="full-name-hint" class="form-hint">1–100 characters.</span>
-            <div class="invalid-feedback" id="full-name-error" role="alert"></div>
-          </div>
+      <!-- Sample counter badge -->
+      <div style="margin-top:0.75rem; display:flex; align-items:center; justify-content:space-between;">
+        <span id="sample-counter" aria-live="polite">0 / 5 samples</span>
+        <button
+          id="clear-samples-btn"
+          type="button"
+          class="btn btn-outline-danger btn-sm"
+          aria-label="Clear all captured samples"
+          style="display: none;"
+        >
+          &#10006;&nbsp; Clear All
+        </button>
+      </div>
 
-          <!-- Email -->
-          <div class="form-group">
-            <label class="form-label" for="email">
-              Username <span class="required" aria-hidden="true">*</span>
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              class="form-control"
-              placeholder="e.g. m.santos@sacli.edu.ph"
-              maxlength="254"
-              required
-              autocomplete="email"
-              aria-required="true"
-              aria-describedby="email-hint"
-            />
-            <span id="email-hint" class="form-hint">Valid email format, max 254 characters.</span>
-            <div class="invalid-feedback" id="email-error" role="alert"></div>
-          </div>
+      <!-- Large capture button -->
+      <button
+        id="capture-btn"
+        type="button"
+        class="btn btn-gold capture-btn-large"
+        disabled
+        aria-disabled="true"
+        aria-label="Capture face sample"
+      >
+        &#128247;&nbsp; Capture Sample
+      </button>
 
-          <!-- ID Number -->
-          <div class="form-group">
-            <label class="form-label" for="id-number">
-              ID Number <span class="required" aria-hidden="true">*</span>
-            </label>
-            <input
-              id="id-number"
-              name="id_number"
-              type="text"
-              class="form-control"
-              placeholder="e.g. 2024-00123"
-              minlength="1"
-              maxlength="50"
-              required
-              aria-required="true"
-              aria-describedby="id-number-hint"
-            />
-            <span id="id-number-hint" class="form-hint">1–50 characters.</span>
-            <div class="invalid-feedback" id="id-number-error" role="alert"></div>
-          </div>
+      <p class="form-hint mt-1">
+        Capture between <strong>3</strong> and <strong>5</strong> samples.
+        Move your head slightly between captures for best recognition accuracy.
+      </p>
 
-          <!-- Department -->
-          <div class="form-group">
-            <label class="form-label" for="department">
-              Department <span class="required" aria-hidden="true">*</span>
-            </label>
-            <input
-              id="department"
-              name="department"
-              type="text"
-              class="form-control"
-              placeholder="e.g. College of Engineering"
-              minlength="1"
-              maxlength="100"
-              required
-              aria-required="true"
-              aria-describedby="department-hint"
-            />
-            <span id="department-hint" class="form-hint">1–100 characters.</span>
-            <div class="invalid-feedback" id="department-error" role="alert"></div>
-          </div>
+      <!-- Thumbnail strip -->
+      <div
+        id="thumbnail-strip"
+        role="list"
+        aria-label="Captured face samples"
+        style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:1rem; min-height:68px;"
+      >
+        <div class="thumb-placeholder" aria-hidden="true" id="ph-1">+</div>
+        <div class="thumb-placeholder" aria-hidden="true" id="ph-2">+</div>
+        <div class="thumb-placeholder" aria-hidden="true" id="ph-3">+</div>
+      </div>
 
-          <!-- Role -->
-          <div class="form-group">
-            <label class="form-label" for="role">
-              Role <span class="required" aria-hidden="true">*</span>
-            </label>
-            <select
-              id="role"
-              name="role"
-              class="form-control"
-              required
-              aria-required="true"
-            >
-              <option value="" disabled selected>Select a role…</option>
-              <option value="student">Student</option>
-              <option value="faculty">Faculty / Staff</option>
-              <option value="admin">Admin</option>
-            </select>
-            <div class="invalid-feedback" id="role-error" role="alert"></div>
-          </div>
+      <!-- Hidden data store -->
+      <div id="captured-data" aria-hidden="true"></div>
 
-          <!-- RA 10173 Consent -->
-          <div class="consent-box">
-            <p class="consent-title">Biometric Data Consent — RA 10173</p>
-            <div class="form-check">
-              <input
-                id="consent-checkbox"
-                name="consent_given"
-                type="checkbox"
-                class="form-check-input"
-                aria-required="true"
-                aria-describedby="consent-desc"
-              />
-              <label class="form-check-label" for="consent-checkbox" id="consent-desc">
-                I confirm that the individual named above has given their
-                <strong>informed consent</strong> for their biometric facial data
-                to be collected, processed, and stored by St. Anne College Lucena,
-                Inc. (SACLI) for attendance monitoring purposes, in accordance with
-                <a
-                  href="https://www.privacy.gov.ph/data-privacy-act/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >Republic Act 10173 — Data Privacy Act of the Philippines</a>.
-                They understand they may withdraw consent at any time by requesting
-                deletion of their biometric data from an Administrator.
-              </label>
-            </div>
-          </div>
+      <!-- Next step button -->
+      <button
+        id="next-step-btn"
+        type="button"
+        class="btn btn-primary"
+        disabled
+        aria-disabled="true"
+      >
+        Next: Fill Details &#8594;
+      </button>
 
-          <!-- Submission requirements status -->
-          <div class="submit-hint" id="submit-hint" aria-live="polite">
-            Required before submitting:
-            <span id="req-consent"  class="requirement requirement-pending">Consent (pending)</span>
-            <span id="req-samples"  class="requirement requirement-pending">0 / 3 samples (pending)</span>
-          </div>
-
-          <!-- Submit -->
-          <div class="form-group mt-2">
-            <button
-              type="submit"
-              id="submit-btn"
-              class="btn btn-primary btn-block btn-lg"
-              disabled
-              aria-disabled="true"
-              aria-describedby="submit-hint"
-            >
-              &#10003;&nbsp; Enroll User
-            </button>
-          </div>
-
-        </form>{# /enroll-form #}
-      </div>{# /enroll-form-body #}
-    </div>{# /enroll-form-card #}
+    </div>{# /enroll-step-1 #}
 
     <!-- ================================================================
-         RIGHT COLUMN — Webcam preview + capture controls
+         STEP 2 — User Information Form
     ================================================================ -->
-    <div class="webcam-panel" style="position: sticky; top: 80px; align-self: start;">
+    <div id="enroll-step-2" style="display:none;">
 
-      <div class="card">
-        <div class="card-header">
-          <span class="card-header-title">&#128247;&nbsp; Webcam Preview</span>
-          <span id="sample-counter" aria-live="polite">0 / 5 samples</span>
+      <!-- Back button -->
+      <button id="back-step-btn" type="button" class="btn btn-outline-secondary">
+        &#8592;&nbsp; Back
+      </button>
+
+      <!-- Read-only sample preview -->
+      <div id="step2-preview" class="step2-preview-grid"></div>
+
+      <!-- Enrollment form -->
+      <form id="enroll-form" novalidate aria-label="User enrollment form">
+
+        <!-- Full Name -->
+        <div class="form-group">
+          <label class="form-label" for="full-name">
+            Full Name <span class="required" aria-hidden="true">*</span>
+          </label>
+          <input
+            id="full-name"
+            name="full_name"
+            type="text"
+            class="form-control"
+            placeholder="e.g. Maria Santos"
+            minlength="1"
+            maxlength="100"
+            required
+            autocomplete="name"
+            aria-required="true"
+            aria-describedby="full-name-hint"
+          />
+          <span id="full-name-hint" class="form-hint">1–100 characters.</span>
+          <div class="invalid-feedback" id="full-name-error" role="alert"></div>
         </div>
 
-        <div class="card-body">
+        <!-- Email -->
+        <div class="form-group">
+          <label class="form-label" for="email">
+            Username <span class="required" aria-hidden="true">*</span>
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            class="form-control"
+            placeholder="e.g. m.santos@sacli.edu.ph"
+            maxlength="254"
+            required
+            autocomplete="email"
+            aria-required="true"
+            aria-describedby="email-hint"
+          />
+          <span id="email-hint" class="form-hint">Valid email format, max 254 characters.</span>
+          <div class="invalid-feedback" id="email-error" role="alert"></div>
+        </div>
 
-          <!-- Live video element — populated by enroll.js -->
-          <div class="webcam-video-wrapper">
-            <video
-              id="webcam-video"
-              autoplay
-              muted
-              playsinline
-              aria-label="Live webcam preview"
-              width="640"
-              height="480"
-            ></video>
-            <span id="webcam-initialising" aria-live="polite">
-              Requesting camera access…
-            </span>
-            <!-- Live face detection overlay (drawn by enroll.js) -->
-            <canvas id="face-detect-canvas" aria-hidden="true"></canvas>
-            <!-- Face status pill -->
-            <div id="face-detect-status" class="no-face" aria-live="polite" aria-atomic="true">
-              Waiting for camera…
-            </div>
-          </div>
+        <!-- ID Number -->
+        <div class="form-group">
+          <label class="form-label" for="id-number">
+            ID Number <span class="required" aria-hidden="true">*</span>
+          </label>
+          <input
+            id="id-number"
+            name="id_number"
+            type="text"
+            class="form-control"
+            placeholder="e.g. 2024-00123"
+            minlength="1"
+            maxlength="50"
+            required
+            aria-required="true"
+            aria-describedby="id-number-hint"
+          />
+          <span id="id-number-hint" class="form-hint">1–50 characters.</span>
+          <div class="invalid-feedback" id="id-number-error" role="alert"></div>
+        </div>
 
-          <!-- Camera error panel — displayed by JS if getUserMedia fails -->
-          <div id="camera-error-panel" role="alert" aria-live="assertive">
-            <div class="error-icon" aria-hidden="true">&#128247;</div>
-            <h3>Camera Access Unavailable</h3>
-            <p>
-              SmartFace could not access your webcam. Face sample capture is
-              disabled until camera access is restored.
-            </p>
-            <ul>
-              <li>Check that a camera is physically connected.</li>
-              <li>
-                Allow camera access in your browser's permission pop-up or
-                site settings (click the camera icon in the address bar).
-              </li>
-              <li>
-                Make sure no other application (e.g. video call software) is
-                currently using the camera.
-              </li>
-              <li>
-                If accessing over a network, the page must be served over
-                <strong>HTTPS</strong> or <strong>localhost</strong>.
-              </li>
-            </ul>
-            <button
-              id="retry-camera-btn"
-              type="button"
-              class="btn btn-outline-primary mt-2"
-              aria-label="Retry camera access"
-            >
-              &#8635;&nbsp; Retry Camera
-            </button>
-          </div>
+        <!-- Department -->
+        <div class="form-group">
+          <label class="form-label" for="department">
+            Department <span class="required" aria-hidden="true">*</span>
+          </label>
+          <input
+            id="department"
+            name="department"
+            type="text"
+            class="form-control"
+            placeholder="e.g. College of Engineering"
+            minlength="1"
+            maxlength="100"
+            required
+            aria-required="true"
+            aria-describedby="department-hint"
+          />
+          <span id="department-hint" class="form-hint">1–100 characters.</span>
+          <div class="invalid-feedback" id="department-error" role="alert"></div>
+        </div>
 
-          <!-- Capture controls -->
-          <div class="webcam-controls">
-            <button
-              id="capture-btn"
-              type="button"
-              class="btn btn-gold"
-              disabled
-              aria-disabled="true"
-              aria-label="Capture face sample"
-            >
-              &#128247;&nbsp; Capture Sample
-            </button>
-
-            <button
-              id="clear-samples-btn"
-              type="button"
-              class="btn btn-outline-danger btn-sm"
-              aria-label="Clear all captured samples"
-              style="display: none;"
-            >
-              &#10006;&nbsp; Clear All
-            </button>
-          </div>
-
-          <p class="form-hint mt-1">
-            Capture between <strong>3</strong> and <strong>5</strong> samples.
-            Move your head slightly between captures for best recognition accuracy.
-          </p>
-
-          <!-- Thumbnail strip — populated dynamically by enroll.js -->
-          <div
-            id="thumbnail-strip"
-            role="list"
-            aria-label="Captured face samples"
+        <!-- Role -->
+        <div class="form-group">
+          <label class="form-label" for="role">
+            Role <span class="required" aria-hidden="true">*</span>
+          </label>
+          <select
+            id="role"
+            name="role"
+            class="form-control"
+            required
+            aria-required="true"
           >
-            <!--
-              Placeholder slots (shown when no samples captured yet).
-              enroll.js will replace these with real thumbnails.
-            -->
-            <div class="thumb-placeholder" aria-hidden="true" id="ph-1">+</div>
-            <div class="thumb-placeholder" aria-hidden="true" id="ph-2">+</div>
-            <div class="thumb-placeholder" aria-hidden="true" id="ph-3">+</div>
+            <option value="" disabled selected>Select a role…</option>
+            <option value="student">Student</option>
+            <option value="faculty">Faculty / Staff</option>
+            <option value="admin">Admin</option>
+          </select>
+          <div class="invalid-feedback" id="role-error" role="alert"></div>
+        </div>
+
+        <!-- RA 10173 Consent -->
+        <div class="consent-box">
+          <p class="consent-title">Biometric Data Consent — RA 10173</p>
+          <div class="form-check">
+            <input
+              id="consent-checkbox"
+              name="consent_given"
+              type="checkbox"
+              class="form-check-input"
+              aria-required="true"
+              aria-describedby="consent-desc"
+            />
+            <label class="form-check-label" for="consent-checkbox" id="consent-desc">
+              I confirm that the individual named above has given their
+              <strong>informed consent</strong> for their biometric facial data
+              to be collected, processed, and stored by St. Anne College Lucena,
+              Inc. (SACLI) for attendance monitoring purposes, in accordance with
+              <a
+                href="https://www.privacy.gov.ph/data-privacy-act/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >Republic Act 10173 — Data Privacy Act of the Philippines</a>.
+              They understand they may withdraw consent at any time by requesting
+              deletion of their biometric data from an Administrator.
+            </label>
           </div>
+        </div>
 
-          <!--
-            Hidden data store: enroll.js serialises each captured JPEG
-            (base64) into a <input type="hidden"> appended here so the
-            form submission handler can read all samples from one place.
-          -->
-          <div id="captured-data" aria-hidden="true"></div>
+        <!-- Submission requirements status -->
+        <div class="submit-hint" id="submit-hint" aria-live="polite">
+          Required before submitting:
+          <span id="req-consent"  class="requirement requirement-pending">Consent (pending)</span>
+          <span id="req-samples"  class="requirement requirement-pending">0 / 3 samples (pending)</span>
+        </div>
 
-        </div>{# /card-body #}
-      </div>{# /card #}
-    </div>{# /webcam-panel #}
+        <!-- Submit -->
+        <div class="form-group mt-2">
+          <button
+            type="submit"
+            id="submit-btn"
+            class="btn btn-primary btn-block btn-lg"
+            disabled
+            aria-disabled="true"
+            aria-describedby="submit-hint"
+          >
+            &#10003;&nbsp; Enroll User
+          </button>
+        </div>
 
-  </div>{# /enroll-layout #}
+      </form>{# /enroll-form #}
+    </div>{# /enroll-step-2 #}
+
+  </div>{# /enroll-wizard-card #}
 </div>{# /page-wrapper #}
 {% endblock %}
 

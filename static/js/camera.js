@@ -53,6 +53,11 @@
       await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODELS_PATH);
       faceApiReady = true;
       console.log('face-api.js models loaded');
+      // Warm up the TF.js WebGL backend so first real detection is instant
+      var warmupCanvas = document.createElement('canvas');
+      warmupCanvas.width = 320; warmupCanvas.height = 240;
+      await faceapi.detectAllFaces(warmupCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }));
+      console.log('face-api.js warmed up');
     } catch (e) {
       console.warn('face-api.js failed to load:', e);
     }
@@ -205,7 +210,7 @@
     // Fire-and-forget: detection resolves asynchronously; next frame picks up fresh results
     faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
       inputSize: 320,
-      scoreThreshold: 0.4
+      scoreThreshold: 0.3
     })).withFaceLandmarks(true).then(function(detections) {
       if (!landmarkCtx || !landmarkCanvas) return;
 

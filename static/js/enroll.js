@@ -6,7 +6,7 @@
  * Reads configuration from window.ENROLL_CONFIG (injected by enroll.html):
  *   minSamples     {number}  Minimum face samples required (default 3)
  *   maxSamples     {number}  Maximum face samples allowed  (default 5)
- *   captureQuality {number}  JPEG quality 0–1             (default 0.85)
+ *   captureQuality {number}  JPEG quality 0 E             (default 0.85)
  *   apiUrl         {string}  Enrollment POST endpoint      (default '/api/enroll')
  *
  * Requirement coverage: 3.1, 3.2, 3.3, 3.9
@@ -35,6 +35,11 @@
   var captureBtn     = document.getElementById('capture-btn');
   var clearBtn       = document.getElementById('clear-samples-btn');
   var submitBtn      = document.getElementById('submit-btn');
+  var nextStepBtn    = document.getElementById('next-step-btn');
+  var backStepBtn    = document.getElementById('back-step-btn');
+  var step1          = document.getElementById('enroll-step-1');
+  var step2          = document.getElementById('enroll-step-2');
+  var step2Preview   = document.getElementById('step2-preview');
   var thumbStrip     = document.getElementById('thumbnail-strip');
   var capturedData   = document.getElementById('captured-data');
   var sampleCounter  = document.getElementById('sample-counter');
@@ -81,7 +86,7 @@
           // Hide initialising label once stream is live
           if (initLabel) initLabel.style.display = 'none';
           // Enable capture controls unless the sample cap is already reached
-          // (Req 3.9 — only enabled when camera is available)
+          // (Req 3.9  Eonly enabled when camera is available)
           var alreadyAtMax = capturedSamples.length >= MAX_SAMPLES;
           captureBtn.disabled = alreadyAtMax;
           captureBtn.setAttribute('aria-disabled', alreadyAtMax ? 'true' : 'false');
@@ -94,7 +99,7 @@
 
   /**
    * Display the camera error panel and disable capture controls.
-   * Requirements 3.9: camera unavailable → error panel shown, capture disabled.
+   * Requirements 3.9: camera unavailable ↁEerror panel shown, capture disabled.
    */
   function showCameraError() {
     if (initLabel) initLabel.style.display = 'none';
@@ -177,7 +182,7 @@
     removeBtn.className = 'thumb-remove';
     removeBtn.type = 'button';
     removeBtn.setAttribute('aria-label', 'Remove sample ' + index);
-    removeBtn.textContent = '×';
+    removeBtn.textContent = 'ÁE;
     removeBtn.addEventListener('click', function () {
       removeSample(wrapper);
     });
@@ -280,7 +285,7 @@
 
     // Capture button:
     //   - If camera hasn't started (button is currently disabled due to camera
-    //     unavailability), leave it alone — don't enable it here.
+    //     unavailability), leave it alone  Edon't enable it here.
     //   - If camera IS running, control it purely by the sample cap.
     var cameraRunning = (activeStream !== null);
     if (cameraRunning) {
@@ -288,7 +293,7 @@
       captureBtn.setAttribute('aria-disabled', atMax ? 'true' : 'false');
     }
 
-    // "Clear All" button — show only when there is at least one sample
+    // "Clear All" button  Eshow only when there is at least one sample
     if (clearBtn) {
       clearBtn.style.display = count > 0 ? '' : 'none';
     }
@@ -297,10 +302,10 @@
     if (reqConsent) {
       if (hasConsent) {
         reqConsent.className = 'requirement requirement-ok';
-        reqConsent.textContent = 'Consent ✓';
+        reqConsent.textContent = 'Consent ✁E;
       } else {
         reqConsent.className = 'requirement requirement-pending';
-        reqConsent.textContent = 'Consent ✗';
+        reqConsent.textContent = 'Consent ✁E;
       }
     }
 
@@ -308,16 +313,22 @@
     if (reqSamples) {
       if (hasEnough) {
         reqSamples.className = 'requirement requirement-ok';
-        reqSamples.textContent = count + ' / ' + MIN_SAMPLES + ' samples ✓';
+        reqSamples.textContent = count + ' / ' + MIN_SAMPLES + ' samples ✁E;
       } else {
         reqSamples.className = 'requirement requirement-pending';
-        reqSamples.textContent = count + ' / ' + MIN_SAMPLES + ' samples ✗';
+        reqSamples.textContent = count + ' / ' + MIN_SAMPLES + ' samples ✁E;
       }
     }
 
     // Submit button
     submitBtn.disabled = !canSubmit;
     submitBtn.setAttribute('aria-disabled', canSubmit ? 'false' : 'true');
+
+    // Next step button  Eenabled once MIN_SAMPLES captured
+    if (nextStepBtn) {
+      nextStepBtn.disabled = !hasEnough;
+      nextStepBtn.setAttribute('aria-disabled', hasEnough ? 'false' : 'true');
+    }
   }
 
   /* -----------------------------------------------------------------------
@@ -369,7 +380,7 @@
     var department = document.getElementById('department').value.trim();
     var role       = document.getElementById('role').value;
 
-    // Strip the data-URL prefix — send only the raw base64 content
+    // Strip the data-URL prefix  Esend only the raw base64 content
     var samplesBase64 = capturedSamples.map(function (url) {
       return url.split(',')[1] || url;
     });
@@ -491,7 +502,7 @@
     if (typeof window.showToast === 'function') {
       window.showToast(message, type);
     } else {
-      // Minimal fallback — should never reach this in production
+      // Minimal fallback  Eshould never reach this in production
       alert('[' + (type || 'info').toUpperCase() + '] ' + message);
     }
   }
@@ -524,7 +535,7 @@
     });
   }
 
-  // Consent checkbox — re-evaluate submit eligibility on every change
+  // Consent checkbox  Ere-evaluate submit eligibility on every change
   if (consentBox) {
     consentBox.addEventListener('change', updateUI);
   }
