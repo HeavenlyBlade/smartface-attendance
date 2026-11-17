@@ -193,6 +193,7 @@
   ----------------------------------------------------------------------- */
   var landmarkCanvas = document.getElementById('overlay-canvas');
   var landmarkCtx    = landmarkCanvas ? landmarkCanvas.getContext('2d') : null;
+  var detectingNow   = false;   // lock — only one detection in flight at a time
 
   function landmarkLoop() {
     requestAnimationFrame(landmarkLoop);
@@ -214,20 +215,23 @@
       drawLandmarkSkeleton(landmarkCtx, det.landmarks.positions, landmarkCanvas.width);
     });
 
-    // Fire async detection if models ready and video is live
-    if (faceApiReady && video.readyState >= 2 && !document.hidden) {
+    // Fire async detection only when models ready, video live, and no detection in flight
+    if (faceApiReady && video.readyState >= 2 && !document.hidden && !detectingNow) {
       var displaySize = { width: landmarkCanvas.width, height: landmarkCanvas.height };
       if (displaySize.width > 0 && displaySize.height > 0) {
+        detectingNow = true;
         faceapi.matchDimensions(landmarkCanvas, displaySize);
         faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
           inputSize: 320,
           scoreThreshold: 0.3
         })).withFaceLandmarks(true).then(function(detections) {
-          // Re-read canvas size at resolve time (may differ from when detection was fired)
           var resolvedSize = { width: landmarkCanvas.width, height: landmarkCanvas.height };
           if (resolvedSize.width > 0 && resolvedSize.height > 0) {
             latestDetections = faceapi.resizeResults(detections, resolvedSize);
           }
+          detectingNow = false;
+        }).catch(function() {
+          detectingNow = false;
         });
       }
     }

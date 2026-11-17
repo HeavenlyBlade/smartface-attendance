@@ -607,6 +607,7 @@
      face-api.js landmark skeleton on enroll webcam
   ----------------------------------------------------------------------- */
   var enrollFaceApiReady  = false;
+  var enrollDetectingNow  = false;
   var enrollLatest        = [];
   var MODELS_PATH         = '/static/models';
   var enrollLandmarkCanvas = document.getElementById('face-detect-canvas');
@@ -656,24 +657,17 @@
   function enrollLandmarkLoop() {
     requestAnimationFrame(enrollLandmarkLoop);
     if (!enrollLandmarkCtx || !enrollLandmarkCanvas || !video) return;
-
-    // Sync canvas to video display size
     var rect = video.getBoundingClientRect();
     if (rect.width > 0 && enrollLandmarkCanvas.width !== rect.width) enrollLandmarkCanvas.width = rect.width;
     if (rect.height > 0 && enrollLandmarkCanvas.height !== rect.height) enrollLandmarkCanvas.height = rect.height;
-
-    // Clear canvas
     enrollLandmarkCtx.clearRect(0, 0, enrollLandmarkCanvas.width, enrollLandmarkCanvas.height);
-
-    // Draw stored landmarks
     enrollLatest.forEach(function(det) {
       drawEnrollSkeleton(enrollLandmarkCtx, det.landmarks.positions, enrollLandmarkCanvas.width);
     });
-
-    // Fire async detection
-    if (enrollFaceApiReady && video.readyState >= 2) {
+    if (enrollFaceApiReady && video.readyState >= 2 && !enrollDetectingNow) {
       var dSize = { width: enrollLandmarkCanvas.width, height: enrollLandmarkCanvas.height };
       if (dSize.width > 0 && dSize.height > 0) {
+        enrollDetectingNow = true;
         faceapi.matchDimensions(enrollLandmarkCanvas, dSize);
         faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
           inputSize: 320, scoreThreshold: 0.3
@@ -682,7 +676,8 @@
           if (resolvedSize.width > 0 && resolvedSize.height > 0) {
             enrollLatest = faceapi.resizeResults(detections, resolvedSize);
           }
-        });
+          enrollDetectingNow = false;
+        }).catch(function() { enrollDetectingNow = false; });
       }
     }
   }
