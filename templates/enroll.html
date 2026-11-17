@@ -14,13 +14,16 @@
     display:  grid;
     grid-template-columns: 1fr 1fr;
     gap:      2rem;
-    align-items: flex-start;
+    align-items: start;   /* not stretch — stretch breaks sticky */
+    overflow: visible;    /* sticky children need this on the parent */
   }
 
   /* ---- Webcam panel ---- */
   .webcam-panel {
     position: sticky;
     top:      80px;         /* sits just below the fixed navbar */
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
   }
 
   .webcam-video-wrapper {
@@ -544,7 +547,7 @@
     <!-- ================================================================
          RIGHT COLUMN — Webcam preview + capture controls
     ================================================================ -->
-    <div class="webcam-panel">
+    <div class="webcam-panel" style="position: sticky; top: 80px; align-self: start;">
 
       <div class="card">
         <div class="card-header">

@@ -90,10 +90,11 @@
   function drawServerBox(ctx, scaleX, scaleY) {
     if (lastBox === null || (Date.now() - lastBoxTime) >= BOX_TIMEOUT_MS) return;
 
-    var x = lastBox.left   * scaleX;
-    var y = lastBox.top    * scaleY;
-    var w = (lastBox.right  - lastBox.left) * scaleX;
-    var h = (lastBox.bottom - lastBox.top)  * scaleY;
+    var pad = 15;
+    var x = lastBox.left   * scaleX - pad;
+    var y = lastBox.top    * scaleY - pad;
+    var w = (lastBox.right  - lastBox.left) * scaleX + pad * 2;
+    var h = (lastBox.bottom - lastBox.top)  * scaleY + pad * 2;
 
     // Bounding box stroke
     ctx.save();
@@ -121,12 +122,13 @@
   }
 
   /* -----------------------------------------------------------------------
-     drawLandmarkSkeleton — draws the 68-point facial landmark skeleton
+     drawLandmarkSkeleton — draws the 68-point facial landmark skeleton.
+     pts must already be in canvas display space (from faceapi.resizeResults).
   ----------------------------------------------------------------------- */
-  function drawLandmarkSkeleton(ctx, pts, scaleX, scaleY) {
+  function drawLandmarkSkeleton(ctx, pts) {
     if (!pts || pts.length < 68) return;
 
-    function pt(i) { return { x: pts[i].x * scaleX, y: pts[i].y * scaleY }; }
+    function pt(i) { return { x: pts[i].x, y: pts[i].y }; }
 
     function drawRegion(indices, close) {
       ctx.beginPath();
@@ -196,9 +198,13 @@
       return;
     }
 
+    // Tell face-api.js the display dimensions so resizeResults maps correctly
+    var displaySize = { width: landmarkCanvas.width, height: landmarkCanvas.height };
+    faceapi.matchDimensions(landmarkCanvas, displaySize);
+
     // Fire-and-forget: detection resolves asynchronously; next frame picks up fresh results
     faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
-      inputSize: 224,
+      inputSize: 320,
       scoreThreshold: 0.4
     })).withFaceLandmarks(true).then(function(detections) {
       if (!landmarkCtx || !landmarkCanvas) return;
@@ -207,6 +213,9 @@
       var rect = video.getBoundingClientRect();
       if (landmarkCanvas.width  !== rect.width)  landmarkCanvas.width  = rect.width;
       if (landmarkCanvas.height !== rect.height) landmarkCanvas.height = rect.height;
+
+      // Remap detection coordinates to canvas display space
+      var resized = faceapi.resizeResults(detections, displaySize);
 
       var scaleX = landmarkCanvas.width  / video.videoWidth;
       var scaleY = landmarkCanvas.height / video.videoHeight;
@@ -217,10 +226,10 @@
       // Redraw server bounding box if still valid
       drawServerBox(landmarkCtx, scaleX, scaleY);
 
-      // Draw landmarks for each detected face
-      detections.forEach(function(det) {
-        var pts = det.landmarks.positions; // array of {x, y} — 68 points
-        drawLandmarkSkeleton(landmarkCtx, pts, scaleX, scaleY);
+      // Draw landmarks for each detected face using resized (display-space) positions
+      resized.forEach(function(det) {
+        var pts = det.landmarks.positions; // already mapped to canvas display space
+        drawLandmarkSkeleton(landmarkCtx, pts);
       });
     });
   }
