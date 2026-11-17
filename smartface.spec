@@ -1,13 +1,13 @@
 # smartface.spec
 # Run from project root: pyinstaller smartface.spec
+# Output: dist\SmartFace\SmartFace.exe
 import os
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
 added_files = [
-    ('templates', 'templates'),
-    ('static', 'static'),
+    ('templates',        'templates'),
+    ('static',           'static'),
     ('database/schema.sql', 'database'),
 ]
 
@@ -23,25 +23,39 @@ a = Analysis(
     datas=added_files,
     hiddenimports=[
         'face_recognition',
+        'face_recognition_models',
         'dlib',
         'flask',
+        'flask.templating',
         'waitress',
         'werkzeug',
+        'werkzeug.serving',
         'jinja2',
+        'jinja2.ext',
         'click',
-        'psutil',
-        'flask_wtf',
-        'dotenv',
         'cv2',
         'numpy',
         'PIL',
+        'PIL.Image',
         'reportlab',
-        'sqlalchemy',
+        'reportlab.pdfgen',
+        'reportlab.lib',
+        'sqlite3',
+        'dotenv',
+        'hypothesis',
+        'psutil',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['psycopg2'],
+    excludes=[
+        'psycopg2',
+        'flask_wtf',
+        'sqlalchemy',
+        'tensorflow',
+        'torch',
+        'tkinter',
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -59,7 +73,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,   # UPX can break native extensions like dlib
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -74,7 +88,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name='SmartFace',
 )

@@ -21,7 +21,15 @@ def init_db() -> None:
             return
 
         print("[init_db] Creating tables...", flush=True)
-        schema = pathlib.Path(__file__).parent / "schema.sql"
+        # Resolve schema.sql relative to this file, with PyInstaller bundle support
+        import sys as _sys
+        if getattr(_sys, 'frozen', False):
+            _base = pathlib.Path(_sys._MEIPASS)
+        else:
+            _base = pathlib.Path(__file__).parent
+        schema = _base / "database" / "schema.sql"
+        if not schema.exists():
+            schema = pathlib.Path(__file__).parent / "schema.sql"
         sql = schema.read_text(encoding="utf-8")
         conn.executescript(sql)
         print("[init_db] Tables created.", flush=True)
