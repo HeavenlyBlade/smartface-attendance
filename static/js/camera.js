@@ -249,17 +249,15 @@
 
     // Fire async detection only when models ready, video live, and no detection in flight
     if (faceApiReady && video.readyState >= 2 && !document.hidden && !detectingNow) {
-      // Use video's actual rendered rect for correct landmark scaling
-      var videoRect = video.getBoundingClientRect();
-      var displaySize = { width: videoRect.width, height: videoRect.height };
+      var displaySize = { width: landmarkCanvas.width, height: landmarkCanvas.height };
       if (displaySize.width > 0 && displaySize.height > 0) {
         detectingNow = true;
-        faceapi.matchDimensions(video, displaySize);
+        faceapi.matchDimensions(landmarkCanvas, displaySize);
         faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
           inputSize: 320,
           scoreThreshold: 0.3
         })).withFaceLandmarks(true).then(function(detections) {
-          var resolvedSize = { width: video.getBoundingClientRect().width, height: video.getBoundingClientRect().height };
+          var resolvedSize = { width: landmarkCanvas.width, height: landmarkCanvas.height };
           if (resolvedSize.width > 0 && resolvedSize.height > 0) {
             latestDetections = faceapi.resizeResults(detections, resolvedSize);
           }

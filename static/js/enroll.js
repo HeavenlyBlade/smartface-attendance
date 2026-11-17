@@ -670,16 +670,14 @@
     });
     enrollLandmarkCtx.restore();
     if (enrollFaceApiReady && video.readyState >= 2 && !enrollDetectingNow) {
-      var vRect = video.getBoundingClientRect();
-        var dSize = { width: vRect.width, height: vRect.height };
+      var dSize = { width: enrollLandmarkCanvas.width, height: enrollLandmarkCanvas.height };
       if (dSize.width > 0 && dSize.height > 0) {
         enrollDetectingNow = true;
-        faceapi.matchDimensions(video, dSize);
+        faceapi.matchDimensions(enrollLandmarkCanvas, dSize);
         faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
           inputSize: 416, scoreThreshold: 0.25
         })).withFaceLandmarks(true).then(function(detections) {
-          var vr = video.getBoundingClientRect();
-            var resolvedSize = { width: vr.width, height: vr.height };
+          var resolvedSize = { width: enrollLandmarkCanvas.width, height: enrollLandmarkCanvas.height };
             if (resolvedSize.width > 0 && resolvedSize.height > 0) {
               enrollLatest = faceapi.resizeResults(detections, resolvedSize);
           }
