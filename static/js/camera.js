@@ -1,6 +1,6 @@
 /**
- * static/js/camera.js  — SmartFace Kiosk
- * 600ms server recognition loop + 30fps face-api.js landmark skeleton
+ * static/js/camera.js  -- SmartFace Kiosk
+ * 600ms server recognition loop + rAF bounding box overlay
  */
 (function () {
   'use strict';
@@ -8,10 +8,8 @@
   var cfg = window.KIOSK_CONFIG || {};
   var BRIGHTNESS_THRESHOLD = cfg.brightnessThreshold !== undefined ? cfg.brightnessThreshold : 50;
   var RECOGNIZE_URL        = cfg.recognizeUrl    || '/api/recognize';
-  var OVERLAY_FONT_SIZE    = cfg.overlayFontSize  || '2rem';
-  var OVERLAY_LINE_WIDTH   = cfg.overlayLineWidth || 3;
-  var CAPTURE_QUALITY      = cfg.captureQuality   || 0.7;
-  var CAPTURE_INTERVAL_MS  = cfg.captureIntervalMs || 600;   // 600ms
+  var CAPTURE_QUALITY      = cfg.captureQuality  || 0.7;
+  var CAPTURE_INTERVAL_MS  = cfg.captureIntervalMs || 600;
 
   /* DOM */
   var video             = document.getElementById('kiosk-video');
@@ -25,44 +23,18 @@
   var failAudio         = document.getElementById('fail-audio');
   var overlayCtx        = overlayCanvas ? overlayCanvas.getContext('2d') : null;
 
-  /* State */
-  var processing   = false;
-  var audioPlaying = false;
-  var captureTimer = null;
+  /* Capture state */
+  var processing            = false;
+  var audioPlaying          = false;
+  var captureTimer          = null;
   var currentAbortController = null;
 
-  /* -----------------------------------------------------------------------
-     Persistent bounding box state — updated by server recognition every 600ms,
-     consumed by the landmark rAF loop which owns all canvas drawing
-  ----------------------------------------------------------------------- */
+  /* Bounding box state -- updated by server every 600ms, drawn every rAF frame */
   var lastBox      = null;   // {top, right, bottom, left} in original video coords
-  var lastBoxLabel = '';     // name + confidence string
-  var lastBoxColor = '';     // green for known, red for unknown
-  var lastBoxTime  = 0;      // timestamp of last box update
-  var BOX_TIMEOUT_MS = 2500; // clear box if no server update for 2.5 s
-
-  /* -----------------------------------------------------------------------
-     face-api.js — model loading and 30fps landmark loop
-  ----------------------------------------------------------------------- */
-  var faceApiReady     = false;
-  var MODELS_PATH      = '/static/models';
-  var latestDetections = [];   // stored results from last async face-api detection
-
-  async function loadFaceApi() {
-    try {
-      await faceapi.nets.tinyFaceDetector.loadFromUri(MODELS_PATH);
-      await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODELS_PATH);
-      faceApiReady = true;
-      console.log('face-api.js models loaded');
-      // Warm up the TF.js WebGL backend so first real detection is instant
-      var warmupCanvas = document.createElement('canvas');
-      warmupCanvas.width = 320; warmupCanvas.height = 240;
-      await faceapi.detectAllFaces(warmupCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }));
-      console.log('face-api.js warmed up');
-    } catch (e) {
-      console.warn('face-api.js failed to load:', e);
-    }
-  }
+  var lastBoxLabel = '';
+  var lastBoxColor = '';
+  var lastBoxTime  = 0;
+  var BOX_TIMEOUT_MS = 2500;
 
   /* -----------------------------------------------------------------------
      Canvas helpers
@@ -74,198 +46,51 @@
     if (overlayCanvas.height !== rect.height) overlayCanvas.height = rect.height;
   }
 
-  function _roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); return; }
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-  }
-
-  function drawRoundedRect(ctx, x, y, w, h, r) {
-    _roundRect(ctx, x, y, w, h, r);
-  }
-
   /* -----------------------------------------------------------------------
-     drawServerBox — renders the server-sourced bounding box + label onto ctx.
-     Called every frame by landmarkLoop after clearing the canvas.
+     drawBox -- clear canvas and redraw bounding box + label every rAF frame
   ----------------------------------------------------------------------- */
-  function drawServerBox(ctx, scaleX, scaleY, drawLabel) {
-    if (lastBox === null || (Date.now() - lastBoxTime) >= BOX_TIMEOUT_MS) return;
-    if (drawLabel === undefined) drawLabel = true;
-
-    var pad = 15;
-    var x = lastBox.left   * scaleX - pad;
-    var y = lastBox.top    * scaleY - pad;
-    var w = (lastBox.right  - lastBox.left) * scaleX + pad * 2;
-    var h = (lastBox.bottom - lastBox.top)  * scaleY + pad * 2;
-
-    // Bounding box stroke
-    ctx.save();
-    ctx.strokeStyle = lastBoxColor;
-    ctx.lineWidth   = 2;
-    ctx.beginPath();
-    ctx.strokeRect(x, y, w, h);
-    ctx.restore();
-
-    // Label drawn only when requested (needs unmirrored ctx)
-    if (drawLabel && lastBoxLabel) {
-      ctx.save();
-      ctx.font         = '14px Inter, sans-serif';
-      ctx.textBaseline = 'bottom';
-      ctx.textAlign    = 'left';
-      var lx = Math.max(x, 2);
-      var ly = Math.max(y - 4, 18);
-      var tm = ctx.measureText(lastBoxLabel);
-      ctx.fillStyle = lastBoxColor;
-      ctx.fillRect(lx - 2, ly - 16, tm.width + 8, 20);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(lastBoxLabel, lx + 2, ly);
-      ctx.restore();
-    }
-  }
-
-  // Draw the label in unmirrored canvas space so text reads correctly
-  function drawServerBoxLabel(ctx, scaleX, scaleY) {
-    if (lastBox === null || (Date.now() - lastBoxTime) >= BOX_TIMEOUT_MS) return;
-    if (!lastBoxLabel) return;
-
-    var pad = 15;
-    var cw  = landmarkCanvas.width;
-    // Mirror x back: box was drawn at x in mirrored space, which maps to cw-(x+w) in normal space
-    var rawX = lastBox.left  * scaleX - pad;
-    var rawW = (lastBox.right - lastBox.left) * scaleX + pad * 2;
-    var labelX = cw - rawX - rawW;  // left edge of box in unmirrored space
-    var labelY = Math.max(lastBox.top * scaleY - pad - 4, 18);
-
-    ctx.save();
-    ctx.font         = '14px Inter, sans-serif';
-    ctx.textBaseline = 'bottom';
-    ctx.textAlign    = 'left';
-    var tm = ctx.measureText(lastBoxLabel);
-    ctx.fillStyle = lastBoxColor;
-    ctx.fillRect(labelX - 2, labelY - 16, tm.width + 8, 20);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(lastBoxLabel, labelX + 2, labelY);
-    ctx.restore();
-  }
-
-  /* -----------------------------------------------------------------------
-     drawLandmarkSkeleton — draws the 68-point facial landmark skeleton.
-     pts must already be in canvas display space (from faceapi.resizeResults).
-  ----------------------------------------------------------------------- */
-  function drawLandmarkSkeleton(ctx, pts, canvasWidth) {
-    if (!pts || pts.length < 68) return;
-
-    function pt(i) { return { x: pts[i].x, y: pts[i].y }; }
-
-    function drawRegion(indices, close) {
-      ctx.beginPath();
-      var start = pt(indices[0]);
-      ctx.moveTo(start.x, start.y);
-      for (var i = 1; i < indices.length; i++) {
-        var p = pt(indices[i]);
-        ctx.lineTo(p.x, p.y);
-      }
-      if (close) ctx.closePath();
-      ctx.stroke();
-    }
-
-    ctx.strokeStyle = 'rgba(0, 220, 255, 0.75)';  // cyan, techy look
-    ctx.lineWidth   = 1.2;
-
-    // Jaw
-    drawRegion([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], false);
-    // Right eyebrow
-    drawRegion([17,18,19,20,21], false);
-    // Left eyebrow
-    drawRegion([22,23,24,25,26], false);
-    // Nose bridge
-    drawRegion([27,28,29,30], false);
-    // Nose bottom
-    drawRegion([30,31,32,33,34,35,30], false);
-    // Right eye
-    drawRegion([36,37,38,39,40,41], true);
-    // Left eye
-    drawRegion([42,43,44,45,46,47], true);
-    // Outer lips
-    drawRegion([48,49,50,51,52,53,54,55,56,57,58,59], true);
-    // Inner lips
-    drawRegion([60,61,62,63,64,65,66,67], true);
-
-    // Dots on each landmark
-    ctx.fillStyle = 'rgba(0, 255, 220, 0.9)';
-    for (var i = 0; i < 68; i++) {
-      var p = pt(i);
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 1.8, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  /* -----------------------------------------------------------------------
-     landmarkLoop — single rAF loop that owns ALL canvas drawing.
-     Uses a stored-results pattern: async face-api.js detection only updates
-     latestDetections; drawing happens synchronously every rAF frame so
-     landmarks are never wiped mid-draw.
-  ----------------------------------------------------------------------- */
-  var landmarkCanvas = document.getElementById('overlay-canvas');
-  var landmarkCtx    = landmarkCanvas ? landmarkCanvas.getContext('2d') : null;
-  var detectingNow   = false;   // lock — only one detection in flight at a time
-
-  function landmarkLoop() {
-    requestAnimationFrame(landmarkLoop);
-
-    if (!landmarkCtx || !landmarkCanvas || !video) return;
+  function drawBox() {
+    requestAnimationFrame(drawBox);
+    if (!overlayCtx || !overlayCanvas || !video) return;
 
     syncCanvasSize();
-    var scaleX = video.videoWidth  ? landmarkCanvas.width  / video.videoWidth  : 1;
-    var scaleY = video.videoHeight ? landmarkCanvas.height / video.videoHeight : 1;
+    overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-    // Clear canvas every frame
-    landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
+    if (lastBox === null || (Date.now() - lastBoxTime) >= BOX_TIMEOUT_MS) return;
 
-    // Mirror the canvas drawing context to match the CSS-mirrored video
-    // Draw box and skeleton inside mirror transform, then restore for text label
-    landmarkCtx.save();
-    landmarkCtx.translate(landmarkCanvas.width, 0);
-    landmarkCtx.scale(-1, 1);
+    var scaleX = video.videoWidth  ? overlayCanvas.width  / video.videoWidth  : 1;
+    var scaleY = video.videoHeight ? overlayCanvas.height / video.videoHeight : 1;
 
-    // Draw server bounding box stroke only (no label — drawn after restore)
-    drawServerBox(landmarkCtx, scaleX, scaleY, false);
+    var pad = 15;
+    /* Mirror x to match CSS scaleX(-1) on video */
+    var rawL = lastBox.left  * scaleX;
+    var rawR = lastBox.right * scaleX;
+    var x    = overlayCanvas.width - rawR - pad;
+    var y    = lastBox.top * scaleY - pad;
+    var w    = (rawR - rawL) + pad * 2;
+    var h    = (lastBox.bottom - lastBox.top) * scaleY + pad * 2;
 
-    // Draw landmarks from last face-api.js detection
-    latestDetections.forEach(function(det) {
-      drawLandmarkSkeleton(landmarkCtx, det.landmarks.positions, landmarkCanvas.width);
-    });
+    /* Box stroke */
+    overlayCtx.save();
+    overlayCtx.strokeStyle = lastBoxColor;
+    overlayCtx.lineWidth   = 2.5;
+    overlayCtx.strokeRect(x, y, w, h);
+    overlayCtx.restore();
 
-    landmarkCtx.restore();
-
-    // Draw label in normal (unmirrored) coordinates so text reads correctly
-    drawServerBoxLabel(landmarkCtx, scaleX, scaleY);
-
-    // Fire async detection only when models ready, video live, and no detection in flight
-    if (faceApiReady && video.readyState >= 2 && !document.hidden && !detectingNow) {
-      var displaySize = { width: landmarkCanvas.width, height: landmarkCanvas.height };
-      if (displaySize.width > 0 && displaySize.height > 0) {
-        detectingNow = true;
-        faceapi.matchDimensions(landmarkCanvas, displaySize);
-        faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
-          inputSize: 320,
-          scoreThreshold: 0.3
-        })).withFaceLandmarks(true).then(function(detections) {
-          var resolvedSize = { width: landmarkCanvas.width, height: landmarkCanvas.height };
-          if (resolvedSize.width > 0 && resolvedSize.height > 0) {
-            latestDetections = faceapi.resizeResults(detections, resolvedSize);
-          }
-          detectingNow = false;
-        }).catch(function() {
-          detectingNow = false;
-        });
-      }
+    /* Label -- drawn in normal coords so text is not mirrored */
+    if (lastBoxLabel) {
+      overlayCtx.save();
+      overlayCtx.font         = '14px Inter, sans-serif';
+      overlayCtx.textBaseline = 'bottom';
+      overlayCtx.textAlign    = 'left';
+      var lx = Math.max(x, 2);
+      var ly = Math.max(y - 2, 18);
+      var tm = overlayCtx.measureText(lastBoxLabel);
+      overlayCtx.fillStyle = lastBoxColor;
+      overlayCtx.fillRect(lx - 2, ly - 16, tm.width + 8, 20);
+      overlayCtx.fillStyle = '#ffffff';
+      overlayCtx.fillText(lastBoxLabel, lx + 2, ly);
+      overlayCtx.restore();
     }
   }
 
@@ -283,8 +108,8 @@
   ----------------------------------------------------------------------- */
   function updateStatusBar(faces) {
     if (!faces || !faces.length) {
-      if (kioskIdleText)  kioskIdleText.style.display  = '';
-      if (kioskLastName)  kioskLastName.style.display  = 'none';
+      if (kioskIdleText) kioskIdleText.style.display = '';
+      if (kioskLastName) kioskLastName.style.display = 'none';
       return;
     }
     var display = null;
@@ -332,17 +157,14 @@
   }
 
   /* -----------------------------------------------------------------------
-     Capture loop — 800ms, with processing lock and AbortController
+     Capture loop -- 600ms, processing lock, AbortController
   ----------------------------------------------------------------------- */
   function captureTick() {
     if (document.visibilityState === 'hidden') return;
     if (processing) return;
     processing = true;
 
-    // Abort any previous in-flight request and create a fresh controller
-    if (currentAbortController) {
-      currentAbortController.abort();
-    }
+    if (currentAbortController) currentAbortController.abort();
     currentAbortController = new AbortController();
     var signal = currentAbortController.signal;
 
@@ -361,18 +183,16 @@
     var b64 = cap.toDataURL('image/jpeg', CAPTURE_QUALITY).split(',')[1];
 
     fetch(RECOGNIZE_URL, {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: b64 }),
-      signal: signal
+      body:    JSON.stringify({ image: b64 }),
+      signal:  signal
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var faces = (data && Array.isArray(data.faces)) ? data.faces : [];
 
-      // Update persistent bounding box state from the first detected face
       if (faces.length > 0) {
-        // Pick the best face: prefer a recognized (user_id set) one
         var face = null;
         for (var i = 0; i < faces.length; i++) {
           if (faces[i].user_id !== null && faces[i].user_id !== undefined) {
@@ -382,20 +202,15 @@
         if (!face) face = faces[0];
 
         var bb = face.bounding_box;
-        // bounding_box values are already in full-frame coordinates (face_service scales by 2x)
         lastBox      = { top: bb.top, right: bb.right, bottom: bb.bottom, left: bb.left };
         lastBoxTime  = Date.now();
 
-        var isKnown = (face.user_id !== null && face.user_id !== undefined);
+        var isKnown  = (face.user_id !== null && face.user_id !== undefined);
         lastBoxColor = isKnown ? '#22c55e' : '#ef4444';
-        if (isKnown) {
-          lastBoxLabel = face.full_name + (face.confidence !== null && face.confidence !== undefined
-            ? ' ' + face.confidence.toFixed(1) + '%' : '');
-        } else {
-          lastBoxLabel = 'Unknown';
-        }
+        lastBoxLabel = isKnown
+          ? face.full_name + (face.confidence != null ? ' ' + face.confidence.toFixed(1) + '%' : '')
+          : 'Unknown';
       }
-      // No face: do NOT clear lastBox — BOX_TIMEOUT_MS handles natural fade-out
 
       updateFaceStatus(faces);
       updateStatusBar(faces);
@@ -403,7 +218,6 @@
       processing = false;
     })
     .catch(function(err) {
-      // Ignore AbortError — it's intentional
       if (err && err.name === 'AbortError') return;
       processing = false;
       updateFaceStatus([]);
@@ -416,19 +230,12 @@
   }
 
   function stopCaptureLoop() {
-    if (captureTimer !== null) {
-      clearInterval(captureTimer);
-      captureTimer = null;
-    }
+    if (captureTimer !== null) { clearInterval(captureTimer); captureTimer = null; }
   }
 
-  /* Pause when tab is hidden, resume when visible */
   document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'hidden') {
-      stopCaptureLoop();
-    } else {
-      startCaptureLoop();
-    }
+    if (document.visibilityState === 'hidden') stopCaptureLoop();
+    else startCaptureLoop();
   });
 
   /* -----------------------------------------------------------------------
@@ -451,15 +258,11 @@
           video.play();
           syncCanvasSize();
           startCaptureLoop();
-          // Start landmark loop only after video dimensions are known
-          landmarkLoop();
+          drawBox();  // start the rAF drawing loop
         };
       })
       .catch(function() { showCameraError(); });
   }
-
-  // Load face-api.js models (landmark loop starts after camera is ready)
-  loadFaceApi();
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startCamera);
