@@ -626,7 +626,7 @@
 
   function drawEnrollSkeleton(ctx, pts, canvasWidth) {
     if (!pts || pts.length < 68) return;
-    function pt(i) { return { x: canvasWidth - pts[i].x, y: pts[i].y }; }
+    function pt(i) { return { x: pts[i].x, y: pts[i].y }; }
     function drawRegion(indices, close) {
       ctx.beginPath();
       ctx.moveTo(pt(indices[0]).x, pt(indices[0]).y);
@@ -661,9 +661,14 @@
     if (rect.width > 0 && enrollLandmarkCanvas.width !== rect.width) enrollLandmarkCanvas.width = rect.width;
     if (rect.height > 0 && enrollLandmarkCanvas.height !== rect.height) enrollLandmarkCanvas.height = rect.height;
     enrollLandmarkCtx.clearRect(0, 0, enrollLandmarkCanvas.width, enrollLandmarkCanvas.height);
+    // Mirror drawing context to match CSS-mirrored video
+    enrollLandmarkCtx.save();
+    enrollLandmarkCtx.translate(enrollLandmarkCanvas.width, 0);
+    enrollLandmarkCtx.scale(-1, 1);
     enrollLatest.forEach(function(det) {
       drawEnrollSkeleton(enrollLandmarkCtx, det.landmarks.positions, enrollLandmarkCanvas.width);
     });
+    enrollLandmarkCtx.restore();
     if (enrollFaceApiReady && video.readyState >= 2 && !enrollDetectingNow) {
       var dSize = { width: enrollLandmarkCanvas.width, height: enrollLandmarkCanvas.height };
       if (dSize.width > 0 && dSize.height > 0) {

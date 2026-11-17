@@ -97,14 +97,10 @@
     if (lastBox === null || (Date.now() - lastBoxTime) >= BOX_TIMEOUT_MS) return;
 
     var pad = 15;
-    var cw = landmarkCanvas.width;
-    // Mirror x coordinates to match CSS-mirrored video
-    var rawLeft  = lastBox.left  * scaleX;
-    var rawRight = lastBox.right * scaleX;
-    var x = cw - rawRight - pad;
-    var y = lastBox.top * scaleY - pad;
-    var w = (rawRight - rawLeft) + pad * 2;
-    var h = (lastBox.bottom - lastBox.top) * scaleY + pad * 2;
+    var x = lastBox.left   * scaleX - pad;
+    var y = lastBox.top    * scaleY - pad;
+    var w = (lastBox.right  - lastBox.left) * scaleX + pad * 2;
+    var h = (lastBox.bottom - lastBox.top)  * scaleY + pad * 2;
 
     // Bounding box stroke
     ctx.save();
@@ -138,8 +134,7 @@
   function drawLandmarkSkeleton(ctx, pts, canvasWidth) {
     if (!pts || pts.length < 68) return;
 
-    // Mirror x coordinate to match CSS-mirrored video
-    function pt(i) { return { x: canvasWidth - pts[i].x, y: pts[i].y }; }
+    function pt(i) { return { x: pts[i].x, y: pts[i].y }; }
 
     function drawRegion(indices, close) {
       ctx.beginPath();
@@ -207,6 +202,11 @@
     // Clear canvas every frame
     landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
 
+    // Mirror the canvas drawing context to match the CSS-mirrored video
+    landmarkCtx.save();
+    landmarkCtx.translate(landmarkCanvas.width, 0);
+    landmarkCtx.scale(-1, 1);
+
     // Draw server bounding box (from last /api/recognize response)
     drawServerBox(landmarkCtx, scaleX, scaleY);
 
@@ -214,6 +214,8 @@
     latestDetections.forEach(function(det) {
       drawLandmarkSkeleton(landmarkCtx, det.landmarks.positions, landmarkCanvas.width);
     });
+
+    landmarkCtx.restore();
 
     // Fire async detection only when models ready, video live, and no detection in flight
     if (faceApiReady && video.readyState >= 2 && !document.hidden && !detectingNow) {
