@@ -184,22 +184,44 @@ def encode_samples(image_list: list) -> list:
         if frame is None:
             raise ValueError(f"Sample {idx}: could not decode image")
 
-        # Quality check 1: blur score
+        # -- Preprocessing: CLAHE to improve low-light / low-contrast frames --
+        lab   = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l, a, b_ch = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l     = clahe.apply(l)
+        frame = cv2.cvtColor(cv2.merge([l, a, b_ch]), cv2.COLOR_LAB2BGR)
+
+        # -- Preprocessing: mild unsharp mask to recover soft/slightly blurry frames --
+        blurred = cv2.GaussianBlur(frame, (0, 0), 3)
+        frame   = cv2.addWeighted(frame, 1.5, blurred, -0.5, 0)
+
+        # Quality check 1: blur score (lowered threshold — JPEG compression
+        # and webcam noise already reduce Laplacian variance significantly)
         gray_q = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        blur = cv2.Laplacian(gray_q, cv2.CV_64F).var()
-        if blur < 50:
-            raise ValueError(f"Sample {idx}: image too blurry (score={blur:.0f}) — hold still and ensure good lighting")
+        blur   = cv2.Laplacian(gray_q, cv2.CV_64F).var()
+        if blur < 30:
+            raise ValueError(
+                f"Sample {idx}: image too blurry (score={blur:.0f}) "
+                f"-- hold still and ensure good lighting"
+            )
 
-        rgb  = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        locs = face_recognition.face_locations(rgb)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # Face detection: try HOG first (fast), fall back to CNN if no face found
+        locs = face_recognition.face_locations(rgb, model="hog")
         if not locs:
-            raise ValueError(f"Sample {idx}: no face detected in image")
+            locs = face_recognition.face_locations(rgb, model="cnn")
+        if not locs:
+            raise ValueError(f"Sample {idx}: no face detected -- face the camera directly")
 
-        # Quality check 2: face size >= 8% of frame
+        # Quality check 2: face size >= 6% of frame (lowered from 8% to be less strict)
         t, r, b, l = locs[0]
-        face_pct = ((b-t)*(r-l)) / (frame.shape[0]*frame.shape[1])
-        if face_pct < 0.08:
-            raise ValueError(f"Sample {idx}: face too small ({face_pct*100:.1f}%) — move closer to the camera")
+        face_pct = ((b - t) * (r - l)) / (frame.shape[0] * frame.shape[1])
+        if face_pct < 0.06:
+            raise ValueError(
+                f"Sample {idx}: face too small ({face_pct*100:.1f}%) "
+                f"-- move closer to the camera"
+            )
 
         encs = face_recognition.face_encodings(rgb, known_face_locations=locs, num_jitters=5)
         if not encs:
