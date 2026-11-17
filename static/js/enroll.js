@@ -623,9 +623,9 @@
     }
   }
 
-  function drawEnrollSkeleton(ctx, pts) {
+  function drawEnrollSkeleton(ctx, pts, canvasWidth) {
     if (!pts || pts.length < 68) return;
-    function pt(i) { return { x: pts[i].x, y: pts[i].y }; }
+    function pt(i) { return { x: canvasWidth - pts[i].x, y: pts[i].y }; }
     function drawRegion(indices, close) {
       ctx.beginPath();
       ctx.moveTo(pt(indices[0]).x, pt(indices[0]).y);
@@ -667,7 +667,7 @@
 
     // Draw stored landmarks
     enrollLatest.forEach(function(det) {
-      drawEnrollSkeleton(enrollLandmarkCtx, det.landmarks.positions);
+      drawEnrollSkeleton(enrollLandmarkCtx, det.landmarks.positions, enrollLandmarkCanvas.width);
     });
 
     // Fire async detection

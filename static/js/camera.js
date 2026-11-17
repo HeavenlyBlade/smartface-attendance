@@ -97,10 +97,14 @@
     if (lastBox === null || (Date.now() - lastBoxTime) >= BOX_TIMEOUT_MS) return;
 
     var pad = 15;
-    var x = lastBox.left   * scaleX - pad;
-    var y = lastBox.top    * scaleY - pad;
-    var w = (lastBox.right  - lastBox.left) * scaleX + pad * 2;
-    var h = (lastBox.bottom - lastBox.top)  * scaleY + pad * 2;
+    var cw = landmarkCanvas.width;
+    // Mirror x coordinates to match CSS-mirrored video
+    var rawLeft  = lastBox.left  * scaleX;
+    var rawRight = lastBox.right * scaleX;
+    var x = cw - rawRight - pad;
+    var y = lastBox.top * scaleY - pad;
+    var w = (rawRight - rawLeft) + pad * 2;
+    var h = (lastBox.bottom - lastBox.top) * scaleY + pad * 2;
 
     // Bounding box stroke
     ctx.save();
@@ -131,10 +135,11 @@
      drawLandmarkSkeleton — draws the 68-point facial landmark skeleton.
      pts must already be in canvas display space (from faceapi.resizeResults).
   ----------------------------------------------------------------------- */
-  function drawLandmarkSkeleton(ctx, pts) {
+  function drawLandmarkSkeleton(ctx, pts, canvasWidth) {
     if (!pts || pts.length < 68) return;
 
-    function pt(i) { return { x: pts[i].x, y: pts[i].y }; }
+    // Mirror x coordinate to match CSS-mirrored video
+    function pt(i) { return { x: canvasWidth - pts[i].x, y: pts[i].y }; }
 
     function drawRegion(indices, close) {
       ctx.beginPath();
@@ -206,7 +211,7 @@
 
     // Draw landmarks from last face-api.js detection
     latestDetections.forEach(function(det) {
-      drawLandmarkSkeleton(landmarkCtx, det.landmarks.positions);
+      drawLandmarkSkeleton(landmarkCtx, det.landmarks.positions, landmarkCanvas.width);
     });
 
     // Fire async detection if models ready and video is live

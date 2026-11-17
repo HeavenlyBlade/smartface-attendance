@@ -1,22 +1,22 @@
 {% extends "base.html" %}
 
 {# ============================================================
-   kiosk.html — Real-Time Face Recognition Kiosk
+   kiosk.html  EReal-Time Face Recognition Kiosk
    SmartFace · St. Anne College Lucena, Inc.
 
    Requirements satisfied:
-     5.1  — Webcam rendered within 3 s of page load
-     5.2  — Camera permission error displayed if getUserMedia denied
-     5.9  — Overlay redrawn within 200 ms of each API response
-     13.1 — Instruction panel shown when camera is denied
-     13.3 — "No face detected" indicator on empty faces array
-     13.4 — "Unknown" label + bounding box for unrecognized faces
-     15.1 — Page delivered within 3 s on 10+ Mbps connection
+     5.1   EWebcam rendered within 3 s of page load
+     5.2   ECamera permission error displayed if getUserMedia denied
+     5.9   EOverlay redrawn within 200 ms of each API response
+     13.1  EInstruction panel shown when camera is denied
+     13.3  E"No face detected" indicator on empty faces array
+     13.4  E"Unknown" label + bounding box for unrecognized faces
+     15.1  EPage delivered within 3 s on 10+ Mbps connection
 
    Layout hierarchy (z-order, highest last):
-     [0] #kiosk-video      — raw webcam stream (z-index: 1)
-     [1] #overlay-canvas   — bounding boxes + labels (z-index: 2)
-     [2] #face-status      — "No face detected" pill (z-index: 3)
+     [0] #kiosk-video       Eraw webcam stream (z-index: 1)
+     [1] #overlay-canvas    Ebounding boxes + labels (z-index: 2)
+     [2] #face-status       E"No face detected" pill (z-index: 3)
    ============================================================ #}
 
 {% block title %}Kiosk{% endblock %}
@@ -24,7 +24,7 @@
 {% block body_class %}kiosk-page{% endblock %}
 
 {# ------------------------------------------------------------------
-   Per-page styles — projector-ready overrides.
+   Per-page styles  Eprojector-ready overrides.
    Body font ≥ 1.5rem  (set on .kiosk-page in style.css)
    Name labels ≥ 2rem  (drawn on canvas; also declared below for
                         any HTML-rendered labels)
@@ -39,7 +39,7 @@
     background-color: #111111;
     color: #ffffff;
     font-size: 1.5rem;
-    overflow: hidden;          /* no page scroll — kiosk is always full-screen */
+    overflow: hidden;          /* no page scroll  Ekiosk is always full-screen */
   }
 
   body.kiosk-page #main-content {
@@ -48,7 +48,7 @@
   }
 
   /* ---------------------------------------------------------------
-     Kiosk outer shell — locked to viewport, no scroll
+     Kiosk outer shell  Elocked to viewport, no scroll
   --------------------------------------------------------------- */
   .kiosk-shell {
     display: flex;
@@ -84,7 +84,7 @@
     flex-shrink: 0;
   }
 
-  /* Camera permission error panel — shown on getUserMedia denial */
+  /* Camera permission error panel  Eshown on getUserMedia denial */
   #camera-error-panel {
     display: none;           /* shown by camera.js on denial */
     flex-direction: column;
@@ -153,7 +153,7 @@
     transform: scaleX(-1);
   }
 
-  /* Canvas sits directly over the video — same size via JS resize */
+  /* Canvas sits directly over the video  Esame size via JS resize */
   #overlay-canvas {
     position: absolute;
     top: 0;
@@ -202,7 +202,7 @@
   }
 
   .kiosk-status-bar .kiosk-last-name {
-    font-size: 2rem;    /* ≥ 2rem name label — Req 5.9, 13.4 */
+    font-size: 2rem;    /* ≥ 2rem name label  EReq 5.9, 13.4 */
     font-weight: 700;
     color: #4CAF82;     /* SACLI green */
   }
@@ -226,7 +226,7 @@
   }
 
   /* ---------------------------------------------------------------
-     Responsive — keep video visible on small displays
+     Responsive  Ekeep video visible on small displays
   --------------------------------------------------------------- */
   @media (max-width: 768px) {
     .kiosk-shell {
@@ -262,7 +262,7 @@
       <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
     </svg>
     <span>
-      Low lighting detected — please improve room brightness for accurate recognition.
+      Low lighting detected  Eplease improve room brightness for accurate recognition.
     </span>
   </div>
 
@@ -285,7 +285,7 @@
       <li>Refresh this page (<kbd>F5</kbd> or <kbd>Ctrl + R</kbd>).</li>
       <li>
         If the icon is not visible, go to
-        <strong>Settings → Privacy &amp; Security → Camera</strong>
+        <strong>Settings ↁEPrivacy &amp; Security ↁECamera</strong>
         and allow access for this site.
       </li>
     </ol>
@@ -305,9 +305,9 @@
   <div class="kiosk-video-wrapper" id="kiosk-video-wrapper">
 
     {#
-      autoplay  — start streaming immediately on permission grant
-      muted     — no audio from the camera
-      playsinline — required on iOS to prevent fullscreen takeover
+      autoplay   Estart streaming immediately on permission grant
+      muted      Eno audio from the camera
+      playsinline  Erequired on iOS to prevent fullscreen takeover
     #}
     <video id="kiosk-video"
            autoplay
@@ -327,7 +327,7 @@
             role="presentation">
     </canvas>
 
-    {# "No face detected" pill — Req 13.3 — shown by JS on empty faces #}
+    {# "No face detected" pill  EReq 13.3  Eshown by JS on empty faces #}
     <div id="face-status" aria-live="polite">
       No face detected
     </div>
@@ -347,11 +347,11 @@
 </div>{# /kiosk-shell #}
 
 {# ================================================================
-   AUDIO CUES  (Req 5.9 — matched face → success; unknown → fail)
+   AUDIO CUES  (Req 5.9  Ematched face ↁEsuccess; unknown ↁEfail)
    base.html already includes #success-sound and #fail-sound but we
    also provide dedicated kiosk IDs so camera.js can reference them
    directly without coupling to base.html internals.
-   preload="auto" — buffer the files on page load for instant playback.
+   preload="auto"  Ebuffer the files on page load for instant playback.
 ================================================================ #}
 <audio id="success-audio" preload="auto" aria-hidden="true">
   <source src="{{ url_for('static', filename='audio/success.wav') }}" type="audio/wav" />
@@ -367,26 +367,26 @@
    Exposes server-side constants to camera.js so the JS layer
    does not hard-code thresholds or API URLs.
 
-   brightnessThreshold — mean pixel value (0–255) below which the
+   brightnessThreshold  Emean pixel value (0 E55) below which the
      brightness warning banner is shown (config.BRIGHTNESS_THRESHOLD)
-   recognizeUrl        — POST endpoint for frame submission
-   overlayFontSize     — canvas label font size string (≥ 2rem → ≥ 32 px
+   recognizeUrl         EPOST endpoint for frame submission
+   overlayFontSize      Ecanvas label font size string (≥ 2rem ↁE≥ 32 px
      at standard 16 px/rem, but we use 36 px for projector clarity)
 ================================================================ #}
 <script>
   window.KIOSK_CONFIG = {
     brightnessThreshold: {{ brightness_threshold }},
     recognizeUrl:        '/api/recognize',
-    overlayFontSize:     '2rem',   /* label font size drawn on canvas — ≥ 2rem per spec */
+    overlayFontSize:     '2rem',   /* label font size drawn on canvas  E≥ 2rem per spec */
     overlayLineWidth:    3,        /* bounding-box stroke width in pixels */
-    captureQuality:      0.7,      /* JPEG quality for toDataURL — Req 5.3 */
-    captureIntervalMs: 800      /* frame capture interval — Req 5.3 */
+    captureQuality:      0.7,      /* JPEG quality for toDataURL  EReq 5.3 */
+    captureIntervalMs: 800      /* frame capture interval  EReq 5.3 */
   };
 </script>
 
-{# face-api.js — client-side face detection and landmark inference #}
+{# face-api.js  Eclient-side face detection and landmark inference #}
 <script src="{{ url_for('static', filename='js/face-api.min.js') }}"></script>
 
-{# camera.js — frame capture loop, overlay drawing, audio cues #}
+{# camera.js  Eframe capture loop, overlay drawing, audio cues #}
 <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
 {% endblock %}

@@ -14,7 +14,7 @@
     display:  grid;
     grid-template-columns: 1fr 1fr;
     gap:      2rem;
-    align-items: start;   /* not stretch — stretch breaks sticky */
+    align-items: start;   /* not stretch  Estretch breaks sticky */
     overflow: visible;    /* sticky children need this on the parent */
   }
 
@@ -297,10 +297,10 @@
     width:          100%; height: 100%;
     pointer-events: none;
     border-radius:  var(--radius-md);
-    transform:      scaleX(-1);
+    /* mirror handled in JS */
   }
 
-  /* Face status pill — floats at bottom of webcam view */
+  /* Face status pill  Efloats at bottom of webcam view */
   #face-detect-status {
     position:         absolute;
     bottom:           0.6rem;
@@ -393,7 +393,7 @@
     padding: 2rem;
   }
 
-  /* Video inside wizard — full width, taller */
+  /* Video inside wizard  Efull width, taller */
   .enroll-wizard-card #webcam-video {
     width: 100%;
     height: 420px;
@@ -468,7 +468,7 @@
   <div class="page-header">
     <h1 class="page-title">Enroll New User</h1>
     <p class="page-subtitle">
-      Capture 3–5 face samples and complete the form to register a new user.
+      Capture 3 E face samples and complete the form to register a new user.
       Biometric data is collected under
       <strong>Republic Act 10173 (Data Privacy Act of the Philippines)</strong>.
     </p>
@@ -479,12 +479,12 @@
 
     <!-- Step indicator -->
     <div class="step-indicator" id="step-indicator">
-      <div class="step-indicator-item active" id="step-ind-1">Step 1 of 2 — Capture Face Samples</div>
-      <div class="step-indicator-item" id="step-ind-2">Step 2 of 2 — Fill Details</div>
+      <div class="step-indicator-item active" id="step-ind-1">Step 1 of 2  ECapture Face Samples</div>
+      <div class="step-indicator-item" id="step-ind-2">Step 2 of 2  EFill Details</div>
     </div>
 
     <!-- ================================================================
-         STEP 1 — Camera + Capture
+         STEP 1  ECamera + Capture
     ================================================================ -->
     <div id="enroll-step-1">
 
@@ -609,7 +609,7 @@
     </div>{# /enroll-step-1 #}
 
     <!-- ================================================================
-         STEP 2 — User Information Form
+         STEP 2  EUser Information Form
     ================================================================ -->
     <div id="enroll-step-2" style="display:none;">
 
@@ -642,7 +642,7 @@
             aria-required="true"
             aria-describedby="full-name-hint"
           />
-          <span id="full-name-hint" class="form-hint">1–100 characters.</span>
+          <span id="full-name-hint" class="form-hint">1 E00 characters.</span>
           <div class="invalid-feedback" id="full-name-error" role="alert"></div>
         </div>
 
@@ -684,7 +684,7 @@
             aria-required="true"
             aria-describedby="id-number-hint"
           />
-          <span id="id-number-hint" class="form-hint">1–50 characters.</span>
+          <span id="id-number-hint" class="form-hint">1 E0 characters.</span>
           <div class="invalid-feedback" id="id-number-error" role="alert"></div>
         </div>
 
@@ -705,7 +705,7 @@
             aria-required="true"
             aria-describedby="department-hint"
           />
-          <span id="department-hint" class="form-hint">1–100 characters.</span>
+          <span id="department-hint" class="form-hint">1 E00 characters.</span>
           <div class="invalid-feedback" id="department-error" role="alert"></div>
         </div>
 
@@ -731,7 +731,7 @@
 
         <!-- RA 10173 Consent -->
         <div class="consent-box">
-          <p class="consent-title">Biometric Data Consent — RA 10173</p>
+          <p class="consent-title">Biometric Data Consent  ERA 10173</p>
           <div class="form-check">
             <input
               id="consent-checkbox"
@@ -750,7 +750,7 @@
                 href="https://www.privacy.gov.ph/data-privacy-act/"
                 target="_blank"
                 rel="noopener noreferrer"
-              >Republic Act 10173 — Data Privacy Act of the Philippines</a>.
+              >Republic Act 10173  EData Privacy Act of the Philippines</a>.
               They understand they may withdraw consent at any time by requesting
               deletion of their biometric data from an Administrator.
             </label>
@@ -787,7 +787,7 @@
 
 {% block scripts %}
 <!--
-  enroll.js — webcam stream, frame capture, thumbnail injection, form
+  enroll.js  Ewebcam stream, frame capture, thumbnail injection, form
   submission handler.  Implemented in Task 2.5.
 -->
 <script src="{{ url_for('static', filename='js/face-api.min.js') }}"></script>
