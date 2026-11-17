@@ -44,8 +44,9 @@
   /* -----------------------------------------------------------------------
      face-api.js — model loading and 30fps landmark loop
   ----------------------------------------------------------------------- */
-  var faceApiReady = false;
-  var MODELS_PATH  = '/static/models';
+  var faceApiReady     = false;
+  var MODELS_PATH      = '/static/models';
+  var latestDetections = [];   // stored results from last async face-api detection
 
   async function loadFaceApi() {
     try {
@@ -181,9 +182,9 @@
 
   /* -----------------------------------------------------------------------
      landmarkLoop — single rAF loop that owns ALL canvas drawing.
-     Fires face-api.js detection as a fire-and-forget async each frame;
-     results are composited on the next resolved promise tick.
-     Server bounding box is redrawn from state on every frame.
+     Uses a stored-results pattern: async face-api.js detection only updates
+     latestDetections; drawing happens synchronously every rAF frame so
+     landmarks are never wiped mid-draw.
   ----------------------------------------------------------------------- */
   var landmarkCanvas = document.getElementById('overlay-canvas');
   var landmarkCtx    = landmarkCanvas ? landmarkCanvas.getContext('2d') : null;
@@ -191,52 +192,35 @@
   function landmarkLoop() {
     requestAnimationFrame(landmarkLoop);
 
-    if (!faceApiReady || !video || video.readyState < 2 || document.hidden) {
-      // Still clear + draw server box even before models load, so the box stays visible
-      if (landmarkCtx && landmarkCanvas) {
-        syncCanvasSize();
-        var sX = video && video.videoWidth  ? landmarkCanvas.width  / video.videoWidth  : 1;
-        var sY = video && video.videoHeight ? landmarkCanvas.height / video.videoHeight : 1;
-        landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
-        drawServerBox(landmarkCtx, sX, sY);
-      }
-      return;
-    }
+    if (!landmarkCtx || !landmarkCanvas || !video) return;
 
-    // Tell face-api.js the display dimensions so resizeResults maps correctly
-    var displaySize = { width: landmarkCanvas.width, height: landmarkCanvas.height };
-    faceapi.matchDimensions(landmarkCanvas, displaySize);
+    syncCanvasSize();
+    var scaleX = video.videoWidth  ? landmarkCanvas.width  / video.videoWidth  : 1;
+    var scaleY = video.videoHeight ? landmarkCanvas.height / video.videoHeight : 1;
 
-    // Fire-and-forget: detection resolves asynchronously; next frame picks up fresh results
-    faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
-      inputSize: 320,
-      scoreThreshold: 0.3
-    })).withFaceLandmarks(true).then(function(detections) {
-      if (!landmarkCtx || !landmarkCanvas) return;
+    // Clear canvas every frame
+    landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
 
-      // Sync canvas size
-      var rect = video.getBoundingClientRect();
-      if (landmarkCanvas.width  !== rect.width)  landmarkCanvas.width  = rect.width;
-      if (landmarkCanvas.height !== rect.height) landmarkCanvas.height = rect.height;
+    // Draw server bounding box (from last /api/recognize response)
+    drawServerBox(landmarkCtx, scaleX, scaleY);
 
-      // Remap detection coordinates to canvas display space
-      var resized = faceapi.resizeResults(detections, displaySize);
-
-      var scaleX = landmarkCanvas.width  / video.videoWidth;
-      var scaleY = landmarkCanvas.height / video.videoHeight;
-
-      // Clear and redraw: server bounding box first, then landmarks on top
-      landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
-
-      // Redraw server bounding box if still valid
-      drawServerBox(landmarkCtx, scaleX, scaleY);
-
-      // Draw landmarks for each detected face using resized (display-space) positions
-      resized.forEach(function(det) {
-        var pts = det.landmarks.positions; // already mapped to canvas display space
-        drawLandmarkSkeleton(landmarkCtx, pts);
-      });
+    // Draw landmarks from last face-api.js detection
+    latestDetections.forEach(function(det) {
+      drawLandmarkSkeleton(landmarkCtx, det.landmarks.positions);
     });
+
+    // Fire async detection if models ready and video is live
+    if (faceApiReady && video.readyState >= 2 && !document.hidden) {
+      var displaySize = { width: landmarkCanvas.width, height: landmarkCanvas.height };
+      faceapi.matchDimensions(landmarkCanvas, displaySize);
+      faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
+        inputSize: 320,
+        scoreThreshold: 0.3
+      })).withFaceLandmarks(true).then(function(detections) {
+        // Only update stored results — drawing happens in the next rAF frame
+        latestDetections = faceapi.resizeResults(detections, displaySize);
+      });
+    }
   }
 
   /* -----------------------------------------------------------------------

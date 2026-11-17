@@ -1,4 +1,4 @@
-/**
+﻿/**
  * static/js/enroll.js
  *
  * Webcam capture and form submission handler for the enrollment page.
@@ -543,6 +543,51 @@
   // Form submit handler
   if (enrollForm) {
     enrollForm.addEventListener('submit', handleSubmit);
+  }
+
+  /* -----------------------------------------------------------------------
+     Wizard step navigation
+  ----------------------------------------------------------------------- */
+
+  // Step indicators
+  var stepInd1 = document.getElementById('step-ind-1');
+  var stepInd2 = document.getElementById('step-ind-2');
+
+  function goToStep1() {
+    if (step1) step1.style.display = '';
+    if (step2) step2.style.display = 'none';
+    if (stepInd1) stepInd1.classList.add('active');
+    if (stepInd2) stepInd2.classList.remove('active');
+  }
+
+  function goToStep2() {
+    if (step1) step1.style.display = 'none';
+    if (step2) step2.style.display = '';
+    if (stepInd1) stepInd1.classList.remove('active');
+    if (stepInd2) stepInd2.classList.add('active');
+    if (step2Preview) {
+      while (step2Preview.firstChild) {
+        step2Preview.removeChild(step2Preview.firstChild);
+      }
+      capturedSamples.forEach(function (dataUrl, i) {
+        var img = document.createElement('img');
+        img.src = dataUrl;
+        img.alt = 'Face sample ' + (i + 1);
+        step2Preview.appendChild(img);
+      });
+    }
+  }
+
+  if (nextStepBtn) {
+    nextStepBtn.addEventListener('click', function () {
+      if (capturedSamples.length >= MIN_SAMPLES) goToStep2();
+    });
+  }
+
+  if (backStepBtn) {
+    backStepBtn.addEventListener('click', function () {
+      goToStep1();
+    });
   }
 
   /* -----------------------------------------------------------------------
