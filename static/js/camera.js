@@ -1,6 +1,6 @@
 /**
  * static/js/camera.js  — SmartFace Kiosk
- * 800ms capture interval, CNN-backed recognition, no MediaPipe FaceMesh
+ * 600ms capture interval, CNN-backed recognition, no MediaPipe FaceMesh
  */
 (function () {
   'use strict';
@@ -11,7 +11,7 @@
   var OVERLAY_FONT_SIZE    = cfg.overlayFontSize  || '2rem';
   var OVERLAY_LINE_WIDTH   = cfg.overlayLineWidth || 3;
   var CAPTURE_QUALITY      = cfg.captureQuality   || 0.7;
-  var CAPTURE_INTERVAL_MS  = cfg.captureIntervalMs || 800;   // 800ms
+  var CAPTURE_INTERVAL_MS  = cfg.captureIntervalMs || 600;   // 600ms
 
   /* DOM */
   var video             = document.getElementById('kiosk-video');
@@ -38,6 +38,7 @@
   var lastBoxLabel = '';     // name + confidence string
   var lastBoxColor = '';     // green for known, red for unknown
   var lastBoxTime  = 0;      // timestamp of last box update
+  var lastLandmarks = null;  // array of [x,y] pairs, or null
   var BOX_TIMEOUT_MS = 2500; // clear box if no update for 2.5 s
 
   /* -----------------------------------------------------------------------
@@ -103,6 +104,44 @@
           overlayCtx.fillRect(lx - 2, ly - 16, tm.width + 8, 20);
           overlayCtx.fillStyle = '#ffffff';
           overlayCtx.fillText(lastBoxLabel, lx + 2, ly);
+          overlayCtx.restore();
+        }
+
+        // Draw 68-point facial landmark skeleton
+        if (lastLandmarks && lastLandmarks.length === 68) {
+          var lm = lastLandmarks;
+          var regions = [
+            { pts: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16], close: false },   // jaw
+            { pts: [17,18,19,20,21], close: false },                               // right eyebrow
+            { pts: [22,23,24,25,26], close: false },                               // left eyebrow
+            { pts: [27,28,29,30], close: false },                                  // nose bridge
+            { pts: [30,31,32,33,34,35], close: false },                            // nose bottom
+            { pts: [36,37,38,39,40,41], close: true },                             // right eye
+            { pts: [42,43,44,45,46,47], close: true },                             // left eye
+            { pts: [48,49,50,51,52,53,54,55,56,57,58,59], close: true },          // outer lips
+            { pts: [60,61,62,63,64,65,66,67], close: true }                        // inner lips
+          ];
+          overlayCtx.save();
+          overlayCtx.strokeStyle = 'rgba(255,255,255,0.4)';
+          overlayCtx.lineWidth = 1;
+          regions.forEach(function(region) {
+            overlayCtx.beginPath();
+            var first = region.pts[0];
+            overlayCtx.moveTo(lm[first][0] * scaleX, lm[first][1] * scaleY);
+            for (var ri = 1; ri < region.pts.length; ri++) {
+              var pi = region.pts[ri];
+              overlayCtx.lineTo(lm[pi][0] * scaleX, lm[pi][1] * scaleY);
+            }
+            if (region.close) overlayCtx.closePath();
+            overlayCtx.stroke();
+          });
+          // Draw dots on top of lines
+          for (var di = 0; di < 68; di++) {
+            overlayCtx.beginPath();
+            overlayCtx.arc(lm[di][0] * scaleX, lm[di][1] * scaleY, 2, 0, Math.PI * 2);
+            overlayCtx.fillStyle = 'rgba(255,255,255,0.9)';
+            overlayCtx.fill();
+          }
           overlayCtx.restore();
         }
       }
@@ -227,6 +266,7 @@
         // bounding_box values are already in full-frame coordinates (face_service scales by 2x)
         lastBox      = { top: bb.top, right: bb.right, bottom: bb.bottom, left: bb.left };
         lastBoxTime  = Date.now();
+        lastLandmarks = (face.landmarks && Array.isArray(face.landmarks)) ? face.landmarks : null;
 
         var isKnown = (face.user_id !== null && face.user_id !== undefined);
         lastBoxColor = isKnown ? '#22c55e' : '#ef4444';

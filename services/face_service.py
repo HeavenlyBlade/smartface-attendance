@@ -265,13 +265,14 @@ def recognize_frame(image_b64: str) -> list:
 
     # Step 3: BGR -> RGB (face_recognition expects RGB input)
     rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
+    gray_small = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
 
     # Step 4: Detect face bounding boxes in the downscaled frame
     # HOG is used here (was: cnn) — ~5-10x faster, CPU-only, good for real-time kiosk use
     locs = face_recognition.face_locations(rgb, model="hog")
 
     # Step 5: Compute 128-dim facial encodings for each detected face
-    encs = face_recognition.face_encodings(rgb, locs, num_jitters=3)
+    encs = face_recognition.face_encodings(rgb, locs, num_jitters=1)
 
     if not locs:
         _last_no_face_time = time.time()
@@ -317,12 +318,28 @@ def recognize_frame(image_b64: str) -> list:
         # Step 8: Scale bounding box back to original frame dimensions (multiply by 2)
         top, right, bottom, left = [v * 2 for v in loc]
 
-        results.append({
+        # Step 9: Extract 68-point facial landmarks and scale to full-frame coords
+        landmarks = None
+        if _predictor is not None:
+            try:
+                import dlib
+                _load_predictor()
+                d_rect = dlib.rectangle(loc[3], loc[0], loc[1], loc[2])  # left, top, right, bottom
+                shape = _predictor(gray_small, d_rect)
+                landmarks = [[shape.part(i).x * 2, shape.part(i).y * 2] for i in range(68)]
+            except Exception as _lm_exc:
+                logger.debug("Landmark extraction failed: %s", _lm_exc)
+                landmarks = None
+
+        face_dict = {
             "user_id":    uid,
             "full_name":  name,
             "confidence": confidence,
             "bounding_box": {"top": top, "right": right, "bottom": bottom, "left": left},
-        })
+        }
+        if landmarks is not None:
+            face_dict["landmarks"] = landmarks
+        results.append(face_dict)
         # Reset liveness so the next recognition event requires a fresh blink
         if uid is not None:
             _liveness[uid] = {"blinked": False, "frames_closed": 0}
