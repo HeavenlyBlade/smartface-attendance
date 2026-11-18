@@ -13,7 +13,7 @@ added_files = [
     ('templates',        'templates'),
     ('static',           'static'),
     ('database/schema.sql', 'database'),
-    # face_recognition_models — must be at face_recognition_models/models/ in bundle
+    # face_recognition_models  Emust be at face_recognition_models/models/ in bundle
     (_frm_models_dir, 'face_recognition_models/models'),
     # face_recognition_models package __init__ files
     (os.path.dirname(face_recognition_models.__file__), 'face_recognition_models'),
@@ -83,7 +83,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,   # UPX can break native extensions like dlib
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
