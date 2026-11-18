@@ -2,13 +2,21 @@
 # Run from project root: pyinstaller smartface.spec
 # Output: dist\SmartFace\SmartFace.exe
 import os
+import face_recognition_models
 
 block_cipher = None
+
+# face_recognition_models data files (required at runtime)
+_frm_models_dir = os.path.join(os.path.dirname(face_recognition_models.__file__), 'models')
 
 added_files = [
     ('templates',        'templates'),
     ('static',           'static'),
     ('database/schema.sql', 'database'),
+    # face_recognition_models — must be at face_recognition_models/models/ in bundle
+    (_frm_models_dir, 'face_recognition_models/models'),
+    # face_recognition_models package __init__ files
+    (os.path.dirname(face_recognition_models.__file__), 'face_recognition_models'),
 ]
 
 # Include shape predictor if present (~95 MB)
@@ -24,6 +32,7 @@ a = Analysis(
     hiddenimports=[
         'face_recognition',
         'face_recognition_models',
+        'face_recognition.api',
         'dlib',
         'flask',
         'flask.templating',

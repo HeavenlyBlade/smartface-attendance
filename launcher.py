@@ -19,6 +19,18 @@ if getattr(sys, 'frozen', False):
         sys.path.insert(0, bundle_dir)
     os.chdir(bundle_dir)
 
+    # Patch face_recognition_models to find its .dat files inside the bundle
+    import face_recognition_models as _frm
+    _frm_models_path = os.path.join(bundle_dir, 'face_recognition_models', 'models')
+    if os.path.isdir(_frm_models_path):
+        # Monkey-patch all model path functions
+        def _make_path(filename):
+            return os.path.join(_frm_models_path, filename)
+        _frm.pose_predictor_model_location      = lambda: _make_path('shape_predictor_68_face_landmarks.dat')
+        _frm.pose_predictor_five_point_model_location = lambda: _make_path('shape_predictor_5_face_landmarks.dat')
+        _frm.face_recognition_model_location    = lambda: _make_path('dlib_face_recognition_resnet_model_v1.dat')
+        _frm.cnn_face_detector_model_location   = lambda: _make_path('mmod_human_face_detector.dat')
+
 URL = 'http://localhost:5000'
 
 def _serve():
