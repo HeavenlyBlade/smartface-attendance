@@ -84,6 +84,7 @@ exe = EXE(
     strip=False,
     upx=False,   # UPX can break native extensions like dlib
     console=False,
+    icon='static/img/smartface.ico',
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
