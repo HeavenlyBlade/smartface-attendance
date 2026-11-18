@@ -102,3 +102,17 @@ coll = COLLECT(
     upx_exclude=[],
     name='SmartFace',
 )
+
+# Post-build: inject icon directly into the exe using rcedit
+# This ensures the icon shows correctly in Windows Explorer
+import subprocess, shutil
+_rcedit = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'rcedit.exe')
+_built_exe = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'dist', 'SmartFace', 'SmartFace.exe')
+_ico = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'static', 'img', 'smartface.ico')
+if os.path.exists(_rcedit) and os.path.exists(_built_exe) and os.path.exists(_ico):
+    result = subprocess.run([_rcedit, _built_exe, '--set-icon', _ico], capture_output=True)
+    if result.returncode == 0:
+        print('INFO: Icon injected successfully via rcedit')
+    else:
+        print(f'WARNING: rcedit failed: {result.stderr.decode()}')
+
