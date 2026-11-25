@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}My Attendance{% endblock %}
 {% block content %}
 <div class="page-wrapper">
@@ -13,7 +13,13 @@
       <div class="table-wrapper" style="border:none;border-radius:0;">
         <table class="table">
           <thead>
-            <tr><th>Date</th><th>Time In</th><th>Time Out</th><th>Status</th></tr>
+            <tr>
+              <th>Date</th>
+              <th>Time In</th>
+              <th>Time Out</th>
+              <th>Status</th>
+              <th>Schedule / Late Details</th>
+            </tr>
           </thead>
           <tbody>
             {% for r in records %}
@@ -27,6 +33,26 @@
                 {% elif r.status == 'absent'  %}<span class="status-badge">Absent</span>
                 {% elif r.status == 'manual'  %}<span class="status-badge status-manual">Manual</span>
                 {% else %}<span class="status-badge">{{ r.status or '—' }}</span>{% endif %}
+              </td>
+              <td>
+                {% if r.status == 'late' %}
+                  <div style="font-size:0.85rem; font-weight:700; color:#b91c1c;">
+                    +{{ r.late_minutes }} mins late
+                    {% if r.is_excused %}
+                      <span class="badge" style="background:#dcfce7; color:#15803d; font-size:0.7rem; margin-left:4px;">Excused</span>
+                    {% else %}
+                      <span class="badge" style="background:#fef3c7; color:#92400e; font-size:0.7rem; margin-left:4px;">Unexcused</span>
+                    {% endif %}
+                  </div>
+                  {% if r.late_reason %}
+                    <div style="font-size:0.8rem; color:#334155;"><strong>Reason:</strong> {{ r.late_reason }}</div>
+                  {% endif %}
+                  {% if r.late_remarks %}
+                    <div style="font-size:0.75rem; color:#64748b; font-style:italic;">&ldquo;{{ r.late_remarks }}&rdquo;</div>
+                  {% endif %}
+                {% else %}
+                  <span style="color:var(--color-muted); font-size:0.85rem;">{{ r.schedule_name or 'On Time' }}</span>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}

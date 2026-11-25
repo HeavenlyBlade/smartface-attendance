@@ -242,6 +242,7 @@ def live_feed():
                 "time_out":   str(r["time_out"]) if r.get("time_out") else None,
                 "status":     r.get("status"),
                 "confidence": r.get("confidence"),
+                "scanner_id": r.get("scanner_id") or "Main Kiosk",
             })
         return jsonify({"faces": safe}), 200
     except Exception as exc:
@@ -262,6 +263,7 @@ def recognize():
     data = request.get_json(silent=True) or {}
 
     image_b64 = data.get("image")
+    scanner_id = str(data.get("scanner_id") or "Main Kiosk").strip()
     if not image_b64 or not isinstance(image_b64, str):
         return jsonify({"error": "Invalid image payload"}), 400
 
@@ -291,7 +293,7 @@ def recognize():
             continue
 
         confidence = face.get("confidence")
-        result = attendance_service.log_attendance(uid, confidence)
+        result = attendance_service.log_attendance(uid, confidence, scanner_id=scanner_id)
 
         if result.get("reason") == "db_error":
             logger.error(

@@ -30,8 +30,19 @@ from flask import (
 from models.audit import (
     ACTION_BIOMETRIC_DELETE,
     ACTION_DEACTIVATE,
+    ACTION_SCHEDULE_CREATE,
+    ACTION_SCHEDULE_UPDATE,
+    ACTION_SCHEDULE_DELETE,
     list_audit,
     write_audit,
+)
+from models.schedule import (
+    get_all_schedules,
+    get_schedule_by_id,
+    create_schedule,
+    update_schedule,
+    delete_schedule,
+    STUDENT_PROGRAMS,
 )
 from models.db import execute_query
 from models.user import (
@@ -522,3 +533,144 @@ def accuracy_test():
         current_threshold=0.45,
         threshold_rows=threshold_rows,
     )
+
+
+# ---------------------------------------------------------------------------
+# Schedule Maker Management
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/schedules", methods=["GET"])
+@role_required("admin", "faculty")
+def schedules():
+    active_tab = request.args.get("tab", "student")
+    student_scheds = get_all_schedules(role="student")
+    faculty_scheds = get_all_schedules(role="faculty")
+    all_scheds = get_all_schedules()
+    dept_rows = execute_query(
+        "SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department != '' ORDER BY department",
+        fetchall=True,
+    ) or []
+    departments = [r["department"] for r in dept_rows]
+    return render_template(
+        "schedules.html",
+        schedules=all_scheds,
+        student_schedules=student_scheds,
+        faculty_schedules=faculty_scheds,
+        student_programs=STUDENT_PROGRAMS,
+        departments=departments,
+        active_tab=active_tab,
+    )
+
+
+@admin_bp.route("/schedules/create", methods=["POST"])
+@role_required("admin")
+def schedule_create():
+    name = request.form.get("name", "").strip()
+    role = request.form.get("role", "student").strip().lower()
+    if role == "student":
+        department = request.form.get("student_program", "").strip() or request.form.get("department", "").strip()
+    else:
+        department = request.form.get("department", "").strip()
+
+    days = request.form.getlist("days_of_week")
+    days_str = ",".join(days) if days else "Monday,Tuesday,Wednesday,Thursday,Friday"
+    start_time = request.form.get("start_time", "08:00")
+    end_time = request.form.get("end_time", "17:00")
+    grace_period_mins = request.form.get("grace_period_mins", 15, type=int)
+    is_default = 1 if request.form.get("is_default") else 0
+    is_active = 1 if request.form.get("is_active") else 0
+
+    if not name:
+        flash("Schedule name is required.", "danger")
+        return redirect(url_for("admin.schedules", tab=role))
+
+    new_id = create_schedule(
+        name=name,
+        role=role,
+        department=department,
+        days_of_week=days_str,
+        start_time=start_time,
+        end_time=end_time,
+        grace_period_mins=grace_period_mins,
+        is_default=is_default,
+        is_active=is_active,
+    )
+    admin_id = session.get("user_id")
+    write_audit(
+        user_id=admin_id,
+        action=ACTION_SCHEDULE_CREATE,
+        details=f"Created {role} schedule '{name}' (ID={new_id}, dept={department}, {start_time}-{end_time}, grace={grace_period_mins}m)",
+        ip_address=request.remote_addr or "",
+    )
+    flash(f"{role.capitalize()} schedule '{name}' created successfully.", "success")
+    return redirect(url_for("admin.schedules", tab=role))
+
+
+@admin_bp.route("/schedules/<int:sched_id>/edit", methods=["POST"])
+@role_required("admin")
+def schedule_edit(sched_id):
+    sched = get_schedule_by_id(sched_id)
+    if not sched:
+        flash("Schedule not found.", "danger")
+        return redirect(url_for("admin.schedules"))
+
+    name = request.form.get("name", "").strip()
+    role = request.form.get("role", sched.get("role", "student")).strip().lower()
+    if role == "student":
+        department = request.form.get("student_program", "").strip() or request.form.get("department", "").strip()
+    else:
+        department = request.form.get("department", "").strip()
+
+    days = request.form.getlist("days_of_week")
+    days_str = ",".join(days) if days else "Monday,Tuesday,Wednesday,Thursday,Friday"
+    start_time = request.form.get("start_time", "08:00")
+    end_time = request.form.get("end_time", "17:00")
+    grace_period_mins = request.form.get("grace_period_mins", 15, type=int)
+    is_default = 1 if request.form.get("is_default") else 0
+    is_active = 1 if request.form.get("is_active") else 0
+
+    if not name:
+        flash("Schedule name is required.", "danger")
+        return redirect(url_for("admin.schedules", tab=role))
+
+    update_schedule(
+        schedule_id=sched_id,
+        name=name,
+        role=role,
+        department=department,
+        days_of_week=days_str,
+        start_time=start_time,
+        end_time=end_time,
+        grace_period_mins=grace_period_mins,
+        is_default=is_default,
+        is_active=is_active,
+    )
+    admin_id = session.get("user_id")
+    write_audit(
+        user_id=admin_id,
+        action=ACTION_SCHEDULE_UPDATE,
+        details=f"Updated {role} schedule ID={sched_id} '{name}'",
+        ip_address=request.remote_addr or "",
+    )
+    flash(f"Schedule '{name}' updated successfully.", "success")
+    return redirect(url_for("admin.schedules", tab=role))
+
+
+@admin_bp.route("/schedules/<int:sched_id>/delete", methods=["POST"])
+@role_required("admin")
+def schedule_delete(sched_id):
+    sched = get_schedule_by_id(sched_id)
+    if not sched:
+        flash("Schedule not found.", "danger")
+        return redirect(url_for("admin.schedules"))
+
+    delete_schedule(sched_id)
+    admin_id = session.get("user_id")
+    write_audit(
+        user_id=admin_id,
+        action=ACTION_SCHEDULE_DELETE,
+        details=f"Deleted schedule ID={sched_id} '{sched.get('name')}'",
+        ip_address=request.remote_addr or "",
+    )
+    flash(f"Schedule '{sched.get('name')}' deleted successfully.", "success")
+    return redirect(url_for("admin.schedules"))

@@ -3,6 +3,7 @@ from functools import wraps
 from datetime import datetime, timedelta
 from werkzeug.security import check_password_hash
 from models.user import get_user_by_email
+from models.db import execute_query
 from models.audit import write_audit, ACTION_LOGIN, ACTION_LOGOUT
 
 # Run in Supabase SQL Editor:
@@ -55,40 +56,76 @@ def login():
     email    = request.form.get('email', '').strip()
     password = request.form.get('password', '')
 
-    # Active lockout check (session-based)
-    lockout_until = session.get('lockout_until')
-    if lockout_until:
-        if isinstance(lockout_until, str):
-            lockout_until = datetime.fromisoformat(lockout_until)
-        remaining = (lockout_until - datetime.now()).total_seconds()
-        if remaining > 0:
-            flash(f'Too many failed attempts. Try again in {int(remaining)} second(s).', 'error')
-            return render_template('login.html', now=datetime.now()), 429
-        else:
-            session.pop('lockout_until', None)
-
     user = None
     try:
         user = get_user_by_email(email)
     except Exception:
         pass
 
+    # Active lockout check (DB-backed, fallback session)
+    lockout_until = None
+    if user and user.get('lockout_until'):
+        lockout_until = user.get('lockout_until')
+    elif session.get('lockout_until'):
+        lockout_until = session.get('lockout_until')
+
+    if lockout_until:
+        if isinstance(lockout_until, str):
+            try:
+                lockout_until = datetime.fromisoformat(lockout_until)
+            except Exception:
+                lockout_until = None
+        if lockout_until:
+            remaining = (lockout_until - datetime.now()).total_seconds()
+            if remaining > 0:
+                flash(f'Too many failed attempts. Try again in {int(remaining)} second(s).', 'error')
+                return render_template('login.html', now=datetime.now()), 429
+            else:
+                session.pop('lockout_until', None)
+
     valid = user and user.get('is_active') and check_password_hash(user['password_hash'], password)
 
     if not valid:
-        attempts = session.get('login_attempts', 0) + 1
+        attempts = 1
+        if user:
+            attempts = (user.get('login_attempts') or 0) + 1
+        else:
+            attempts = session.get('login_attempts', 0) + 1
         session['login_attempts'] = attempts
         lock_secs = _lockout_seconds(attempts)
+        lock_until = (datetime.now() + timedelta(seconds=lock_secs)) if lock_secs > 0 else None
         if lock_secs > 0:
-            session['lockout_until'] = (datetime.now() + timedelta(seconds=lock_secs)).isoformat()
+            session['lockout_until'] = lock_until.isoformat() if lock_until else None
             flash(f'Invalid credentials. Locked for {lock_secs} second(s).', 'error')
         else:
             flash('Invalid credentials.', 'error')
+
+        if user:
+            try:
+                execute_query(
+                    "UPDATE users SET login_attempts = ?, lockout_until = ? WHERE id = ?",
+                    params=(attempts, lock_until.isoformat() if lock_until else None, user['id']),
+                    commit=True
+                )
+            except Exception:
+                pass
+
         return render_template('login.html', now=datetime.now()), 401
 
     if not user.get('is_active'):
         flash('Account is deactivated. Contact an administrator.', 'error')
         return render_template('login.html', now=datetime.now()), 403
+
+    # Reset login attempts in DB if previously incremented
+    if user.get('login_attempts') or user.get('lockout_until'):
+        try:
+            execute_query(
+                "UPDATE users SET login_attempts = 0, lockout_until = NULL WHERE id = ?",
+                params=(user['id'],),
+                commit=True
+            )
+        except Exception:
+            pass
 
     # Successful login
     session.permanent = True

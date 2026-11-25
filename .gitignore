@@ -1,4 +1,4 @@
-﻿# Environment — NEVER commit this
+# Environment — NEVER commit this
 .env
 
 # Python
@@ -9,6 +9,11 @@ __pycache__/
 *.pdb
 .pytest_cache/
 .hypothesis/
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
 
 # Uploads (face samples — personal biometric data)
 uploads/
@@ -32,5 +37,7 @@ build/
 
 # OS
 .DS_Store
-Thumbs.dbmodels/*.dat
+Thumbs.db
+models/*.dat
 models/*.bz2
+*.exe

@@ -74,14 +74,22 @@ def _is_debounce_elapsed(user_id: int) -> bool:
     return elapsed >= _DEBOUNCE_SECONDS
 
 
-def _determine_status(time_in: datetime) -> str:
+def _determine_status(time_in: datetime, user_id: int = None) -> str:
     """
-    Return 'present' if time_in is at or before config.LATE_TIME,
-    'late' if time_in is strictly after config.LATE_TIME.
+    Return 'present' if time_in is at or before the allowed arrival cutoff,
+    'late' if strictly after.
+    If user_id is provided, evaluates against user's schedule with grace period.
+    Otherwise compares against config.LATE_TIME (Requirement 6.1).
+    """
+    if user_id is not None:
+        try:
+            from models.schedule import get_schedule_for_user, evaluate_attendance_time
+            sched = get_schedule_for_user(user_id, time_in)
+            eval_res = evaluate_attendance_time(sched, time_in)
+            return eval_res["status"]
+        except Exception as exc:
+            logger.debug("_determine_status fallback to LATE_TIME: %s", exc)
 
-    config.LATE_TIME is a string in HH:MM:SS format (e.g. '08:00:00').
-    (Requirement 6.1)
-    """
     # Parse LATE_TIME from config (e.g. '08:00:00')
     parts = config.LATE_TIME.split(":")
     late_threshold: dt_time = dt_time(
@@ -100,49 +108,9 @@ def _determine_status(time_in: datetime) -> str:
 # ---------------------------------------------------------------------------
 
 
-def log_attendance(user_id: int, confidence: float) -> dict:
+def log_attendance(user_id: int, confidence: float, scanner_id: str = "Main Kiosk") -> dict:
     """
     Attempt to log (or update) an attendance record for user_id.
-
-    Guard 1 — Debounce check (Requirement 6.3, 6.8):
-        If elapsed time since last_seen_dict[user_id] is < 30 seconds,
-        skip the DB operation and return::
-
-            {"logged": False, "reason": "debounce"}
-
-    Guard 2 — DB write (Requirements 6.1, 6.2, 6.4):
-        Execute a single ``INSERT … ON CONFLICT (user_id, date) DO UPDATE SET``
-        statement.  This enforces the ``UNIQUE (user_id, date)``
-        constraint at the DB level so no duplicate daily rows can ever exist,
-        even under concurrent requests.
-
-        First recognition (INSERT path):
-            - Sets time_in to now, status determined by _determine_status(),
-              confidence to the supplied value.
-        Subsequent recognitions on the same date (CONFLICT → UPDATE path):
-            - Updates time_out to now, refreshes confidence.
-
-    On DB success (Requirements 6.5):
-        Update last_seen_dict[user_id] = now.
-
-    On DB failure (Requirement 6.7):
-        Leave last_seen_dict unchanged.  Return error dict so the caller
-        (POST /api/recognize) can respond 503.
-
-    Parameters
-    ----------
-    user_id : int
-        The users.id of the recognized user.
-    confidence : float
-        Recognition confidence value (0.00–100.00) as returned by the
-        face recognition pipeline.
-
-    Returns
-    -------
-    dict
-        Success: ``{"logged": True, "user_id": user_id, "status": status}``
-        Debounce skip: ``{"logged": False, "reason": "debounce"}``
-        DB error: ``{"logged": False, "reason": "db_error", "error": str}``
     """
     # ------------------------------------------------------------------
     # Guard 1: Debounce
@@ -159,31 +127,50 @@ def log_attendance(user_id: int, confidence: float) -> dict:
     now = datetime.now()
     today = now.date()
     time_in_str = now.strftime("%H:%M:%S")
-    status = _determine_status(now)
+
+    # Evaluate schedule
+    sched_info = None
+    try:
+        from models.schedule import get_schedule_for_user, evaluate_attendance_time
+        sched = get_schedule_for_user(user_id, now)
+        sched_info = evaluate_attendance_time(sched, now)
+    except Exception as exc:
+        logger.debug("Schedule evaluation exception in log_attendance: %s", exc)
+
+    if sched_info:
+        status = sched_info["status"]
+        late_minutes = sched_info["late_minutes"]
+        schedule_id = sched_info["schedule_id"]
+        late_reason = sched_info["explanation"] if status == "late" else ""
+    else:
+        status = _determine_status(now)
+        late_minutes = 0
+        schedule_id = None
+        late_reason = ""
 
     # ------------------------------------------------------------------
     # Guard 2: DB write — INSERT … ON CONFLICT (user_id, date) DO UPDATE
-    #
-    # On first recognition of the day (INSERT path):
-    #   Sets time_in, status, confidence.
-    #   time_out is left NULL (default from schema).
-    #
-    # On subsequent recognitions same day (CONFLICT → UPDATE path):
-    #   Updates time_out to now and refreshes confidence.
-    #   time_in and status are intentionally preserved from the first
-    #   insert so status is always derived from actual arrival time.
-    #
-    # EXCLUDED.col references the value that was proposed in the INSERT —
-    # i.e. the current time / confidence.  PostgreSQL ON CONFLICT syntax.
     # ------------------------------------------------------------------
     sql = (
-        "INSERT INTO attendance (user_id, date, time_in, status, confidence) "
-        "VALUES (?, ?, ?, ?, ?) "
+        "INSERT INTO attendance (user_id, date, time_in, status, confidence, "
+        "                        schedule_id, late_minutes, late_reason, scanner_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT (user_id, date) DO UPDATE SET "
         "time_out = EXCLUDED.time_in, "
-        "confidence = EXCLUDED.confidence"
+        "confidence = EXCLUDED.confidence, "
+        "scanner_id = EXCLUDED.scanner_id"
     )
-    params = (user_id, today, time_in_str, status, confidence)
+    params = (
+        user_id,
+        today,
+        time_in_str,
+        status,
+        confidence,
+        schedule_id,
+        late_minutes,
+        late_reason,
+        scanner_id or "Main Kiosk",
+    )
 
     try:
         execute_query(sql, params=params, commit=True)

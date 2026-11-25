@@ -30,9 +30,11 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-# ---------------------------------------------------------------------------
-# Hypothesis global profile
-# ---------------------------------------------------------------------------
+from database.init_db import init_db
+try:
+    init_db()
+except Exception:
+    pass
 
 settings.register_profile("smartface", max_examples=100, deadline=5000)
 settings.load_profile("smartface")

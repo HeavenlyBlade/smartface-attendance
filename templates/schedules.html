@@ -1,0 +1,502 @@
+{% extends "base.html" %}
+{% block title %}Schedule Maker{% endblock %}
+
+{% block head %}
+<style>
+  .schedule-tabs {
+    display: flex;
+    gap: 0.5rem;
+    border-bottom: 2px solid #e2e8f0;
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .schedule-tab {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-muted);
+    text-decoration: none;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.15s ease;
+  }
+  .schedule-tab:hover {
+    color: var(--color-navy);
+  }
+  .schedule-tab.active {
+    color: var(--color-navy);
+    border-bottom-color: #D4AF37; /* SACLI gold */
+  }
+  .schedule-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1.5rem;
+  }
+  .schedule-card {
+    background: var(--color-white);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .schedule-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  .schedule-card.default-schedule {
+    border-left: 4px solid #D4AF37;
+  }
+  .schedule-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+  }
+  .schedule-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--color-navy);
+    margin: 0;
+  }
+  .schedule-dept {
+    font-size: 0.82rem;
+    color: var(--color-muted);
+    margin-top: 0.2rem;
+  }
+  .time-badge-row {
+    display: flex;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+  }
+  .time-badge {
+    background: #f1f5f9;
+    padding: 0.4rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #334155;
+    display: flex;
+    flex-direction: column;
+  }
+  .time-badge span.label {
+    font-size: 0.68rem;
+    color: var(--color-muted);
+    text-transform: uppercase;
+  }
+  .days-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.6rem 0;
+  }
+  .day-pill {
+    font-size: 0.72rem;
+    padding: 0.2rem 0.45rem;
+    border-radius: 4px;
+    background: #e2e8f0;
+    color: #475569;
+    font-weight: 600;
+  }
+  .day-pill.active {
+    background: #002147;
+    color: #ffffff;
+  }
+  .grace-note {
+    font-size: 0.8rem;
+    color: #b45309;
+    background: #fffbeb;
+    padding: 0.35rem 0.6rem;
+    border-radius: 4px;
+    margin-top: 0.5rem;
+  }
+  .card-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #f1f5f9;
+  }
+  /* Modal Overlay */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .modal-overlay.active {
+    display: flex;
+  }
+  .modal-box {
+    background: #fff;
+    border-radius: var(--radius-md);
+    width: 100%;
+    max-width: 540px;
+    padding: 1.5rem;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  }
+  .checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 0.4rem;
+  }
+  .checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+  }
+  .role-toggle-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #475569;
+    border-radius: 6px;
+    flex: 1;
+    text-align: center;
+  }
+  .role-toggle-btn.selected {
+    background: #002147;
+    color: #ffffff;
+    border-color: #002147;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+  <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem;">
+    <div>
+      <h1 class="page-title">Schedule Maker</h1>
+      <p class="page-subtitle">Configure separate class schedules for Students (BSA, BSBA, BSIT, BSCE, BSIE) and shift schedules for Faculty attendance.</p>
+    </div>
+    {% if session.get('role') == 'admin' %}
+    <button class="btn btn-primary" onclick="openCreateModal()">
+      <i data-lucide="plus-circle" style="width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i>
+      New Schedule
+    </button>
+    {% endif %}
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- Segmented Tabs: Student Schedules vs Faculty Schedules -->
+  <div class="schedule-tabs">
+    <a href="{{ url_for('admin.schedules', tab='student') }}"
+       class="schedule-tab {% if active_tab != 'faculty' %}active{% endif %}">
+      <span>🎓 Student Schedules (BSA, BSBA, BSIT, BSCE, BSIE)</span>
+      <span class="badge" style="background:#e2e8f0; color:#334155; font-size:0.75rem;">{{ student_schedules|length }}</span>
+    </a>
+    <a href="{{ url_for('admin.schedules', tab='faculty') }}"
+       class="schedule-tab {% if active_tab == 'faculty' %}active{% endif %}">
+      <span>👨‍🏫 Faculty Schedules</span>
+      <span class="badge" style="background:#e2e8f0; color:#334155; font-size:0.75rem;">{{ faculty_schedules|length }}</span>
+    </a>
+  </div>
+
+  <!-- Determine which list to show based on active tab -->
+  {% set current_list = faculty_schedules if active_tab == 'faculty' else student_schedules %}
+
+  <!-- Schedule Cards Grid -->
+  {% if current_list %}
+  <div class="schedule-grid">
+    {% for s in current_list %}
+    <div class="schedule-card {% if s.is_default %}default-schedule{% endif %}">
+      <div>
+        <div class="schedule-header">
+          <div>
+            <h3 class="schedule-title">{{ s.name }}</h3>
+            <div class="schedule-dept">
+              {% if s.role == 'student' %}
+                {% if s.department in ['BSA', 'BSBA', 'BSIT', 'BSCE', 'BSIE'] %}
+                  <span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700;">Program: {{ s.department }}</span>
+                {% elif s.department %}
+                  <span class="badge" style="background:#e0f2fe; color:#0369a1;">Dept: {{ s.department }}</span>
+                {% else %}
+                  <span class="badge" style="background:#f1f5f9; color:#475569;">All Student Programs</span>
+                {% endif %}
+              {% else %}
+                <span class="badge" style="background:#f3e8ff; color:#6b21a8; font-weight:600;">Faculty: {{ s.department or 'All Faculty Departments' }}</span>
+              {% endif %}
+            </div>
+          </div>
+          <div>
+            {% if s.is_default %}
+              <span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700;">Default</span>
+            {% endif %}
+            {% if not s.is_active %}
+              <span class="badge" style="background:#fee2e2; color:#991b1b;">Inactive</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="time-badge-row">
+          <div class="time-badge">
+            <span class="label">Time In (Start)</span>
+            <span>{{ s.start_time[:5] }}</span>
+          </div>
+          <div class="time-badge">
+            <span class="label">Time Out (End)</span>
+            <span>{{ s.end_time[:5] }}</span>
+          </div>
+          <div class="time-badge">
+            <span class="label">Grace Period</span>
+            <span>{{ s.grace_period_mins }} min</span>
+          </div>
+        </div>
+
+        <div class="days-list">
+          {% set day_list = s.days_of_week.split(',') %}
+          {% for d in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] %}
+            <span class="day-pill {% if d in day_list %}active{% endif %}">{{ d[:3] }}</span>
+          {% endfor %}
+        </div>
+
+        <div class="grace-note">
+          <i data-lucide="clock" style="width:14px; height:14px; display:inline-block; vertical-align:-2px;"></i>
+          Arrival after grace period is marked <strong>Late</strong> with exact minutes & reason tracking.
+        </div>
+      </div>
+
+      {% if session.get('role') == 'admin' %}
+      <div class="card-actions">
+        <button class="btn btn-sm btn-outline-primary"
+                onclick='openEditModal({{ s|tojson|safe }})'>
+          Edit
+        </button>
+        <form method="POST" action="{{ url_for('admin.schedule_delete', sched_id=s.id) }}"
+              onsubmit="return confirm('Delete schedule \'{{ s.name }}\'?');" style="margin:0;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card" style="padding: 2.5rem; text-align: center; margin-top: 1.5rem;">
+    <p style="color: var(--color-muted); font-size: 1.1rem; margin-bottom: 1rem;">
+      No {% if active_tab == 'faculty' %}faculty{% else %}student{% endif %} schedules found.
+    </p>
+    {% if session.get('role') == 'admin' %}
+    <button class="btn btn-primary" onclick="openCreateModal()">Create {% if active_tab == 'faculty' %}Faculty{% else %}Student{% endif %} Schedule</button>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- Modal: Create / Edit Schedule -->
+<div class="modal-overlay" id="scheduleModal">
+  <div class="modal-box">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <h3 id="modalTitle" style="margin:0; font-size:1.25rem;">Create Schedule</h3>
+      <button type="button" onclick="closeModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer;">&times;</button>
+    </div>
+
+    <form id="scheduleForm" method="POST" action="{{ url_for('admin.schedule_create') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      <input type="hidden" id="sched_role" name="role" value="student"/>
+
+      <!-- Role selector: Student vs Faculty -->
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label style="font-weight:600; font-size:0.85rem;">Schedule Target Audience *</label>
+        <div style="display:flex; gap:0.5rem; margin-top:0.3rem;">
+          <div id="btn-target-student" class="role-toggle-btn selected" onclick="setScheduleRole('student')">
+            🎓 Student Schedule
+          </div>
+          <div id="btn-target-faculty" class="role-toggle-btn" onclick="setScheduleRole('faculty')">
+            👨‍🏫 Faculty Schedule
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label for="sched_name" style="font-weight:600; font-size:0.85rem;">Schedule Name *</label>
+        <input type="text" id="sched_name" name="name" class="form-control" required placeholder="e.g. BSIT Morning Shift, Faculty Working Hours" />
+      </div>
+
+      <!-- Student Program Selection (BSA, BSBA, BSIT, BSCE, BSIE) -->
+      <div class="form-group" id="student_program_group" style="margin-bottom:1rem;">
+        <label for="student_program" style="font-weight:600; font-size:0.85rem;">Student Program / Course *</label>
+        <select id="student_program" name="student_program" class="form-control">
+          <option value="">All Programs (General Student Schedule)</option>
+          <option value="BSA">BSA — Bachelor of Science in Accountancy</option>
+          <option value="BSBA">BSBA — Bachelor of Science in Business Administration</option>
+          <option value="BSIT">BSIT — Bachelor of Science in Information Technology</option>
+          <option value="BSCE">BSCE — Bachelor of Science in Civil Engineering</option>
+          <option value="BSIE">BSIE — Bachelor of Science in Industrial Engineering</option>
+        </select>
+        <small style="color:var(--color-muted);">Select the student program this schedule applies to.</small>
+      </div>
+
+      <!-- Faculty Department Selection -->
+      <div class="form-group" id="faculty_dept_group" style="display:none; margin-bottom:1rem;">
+        <label for="sched_dept" style="font-weight:600; font-size:0.85rem;">Faculty Department / Shift Category</label>
+        <input type="text" id="sched_dept" name="department" class="form-control" list="deptOptions" placeholder="e.g. College Faculty, Senior High, or All Faculty" />
+        <datalist id="deptOptions">
+          <option value="College Faculty"></option>
+          <option value="General Faculty"></option>
+          <option value="Senior High Faculty"></option>
+          {% for d in departments %}
+            <option value="{{ d }}"></option>
+          {% endfor %}
+        </datalist>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
+        <div class="form-group">
+          <label for="sched_start" style="font-weight:600; font-size:0.85rem;">Time In (Start Time) *</label>
+          <input type="time" id="sched_start" name="start_time" class="form-control" required value="08:00" />
+        </div>
+        <div class="form-group">
+          <label for="sched_end" style="font-weight:600; font-size:0.85rem;">Time Out (End Time) *</label>
+          <input type="time" id="sched_end" name="end_time" class="form-control" required value="17:00" />
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label for="sched_grace" style="font-weight:600; font-size:0.85rem;">Grace Period (Minutes) *</label>
+        <input type="number" id="sched_grace" name="grace_period_mins" class="form-control" required min="0" max="120" value="15" />
+        <small style="color:var(--color-muted);">Arrival within (Start Time + Grace Period) is counted as Present. Arrival afterwards is counted as Late.</small>
+      </div>
+
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label style="font-weight:600; font-size:0.85rem;">Active Days of Week</label>
+        <div class="checkbox-group">
+          {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] %}
+          <label class="checkbox-item">
+            <input type="checkbox" name="days_of_week" value="{{ day }}" class="day-checkbox" {% if day not in ['Saturday', 'Sunday'] %}checked{% endif %} />
+            {{ day[:3] }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div style="display:flex; gap:1.5rem; margin-bottom:1.5rem;">
+        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.88rem; cursor:pointer;">
+          <input type="checkbox" id="sched_default" name="is_default" value="1" />
+          Default for this Role
+        </label>
+        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.88rem; cursor:pointer;">
+          <input type="checkbox" id="sched_active" name="is_active" value="1" checked />
+          Active
+        </label>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+        <button type="button" class="btn btn-outline-primary" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="modalSubmitBtn">Save Schedule</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  var currentTab = "{{ active_tab }}";
+
+  function setScheduleRole(role) {
+    document.getElementById('sched_role').value = role;
+    var btnStudent = document.getElementById('btn-target-student');
+    var btnFaculty = document.getElementById('btn-target-faculty');
+    var studentGroup = document.getElementById('student_program_group');
+    var facultyGroup = document.getElementById('faculty_dept_group');
+
+    if (role === 'faculty') {
+      btnFaculty.classList.add('selected');
+      btnStudent.classList.remove('selected');
+      studentGroup.style.display = 'none';
+      facultyGroup.style.display = 'block';
+    } else {
+      btnStudent.classList.add('selected');
+      btnFaculty.classList.remove('selected');
+      studentGroup.style.display = 'block';
+      facultyGroup.style.display = 'none';
+    }
+  }
+
+  function openCreateModal() {
+    document.getElementById('modalTitle').innerText = 'Create Schedule';
+    document.getElementById('scheduleForm').action = "{{ url_for('admin.schedule_create') }}";
+    document.getElementById('sched_name').value = '';
+    document.getElementById('student_program').value = '';
+    document.getElementById('sched_dept').value = '';
+    document.getElementById('sched_start').value = '08:00';
+    document.getElementById('sched_end').value = '17:00';
+    document.getElementById('sched_grace').value = '15';
+    document.getElementById('sched_default').checked = false;
+    document.getElementById('sched_active').checked = true;
+
+    // Match currently viewed tab
+    setScheduleRole(currentTab === 'faculty' ? 'faculty' : 'student');
+
+    const defaultDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    document.querySelectorAll('.day-checkbox').forEach(cb => {
+      cb.checked = defaultDays.includes(cb.value);
+    });
+
+    document.getElementById('scheduleModal').classList.add('active');
+  }
+
+  function openEditModal(sched) {
+    document.getElementById('modalTitle').innerText = 'Edit Schedule';
+    document.getElementById('scheduleForm').action = `/schedules/${sched.id}/edit`;
+    document.getElementById('sched_name').value = sched.name || '';
+    
+    var role = sched.role || 'student';
+    setScheduleRole(role);
+
+    if (role === 'student') {
+      document.getElementById('student_program').value = sched.department || '';
+    } else {
+      document.getElementById('sched_dept').value = sched.department || '';
+    }
+
+    document.getElementById('sched_start').value = (sched.start_time || '08:00').substring(0, 5);
+    document.getElementById('sched_end').value = (sched.end_time || '17:00').substring(0, 5);
+    document.getElementById('sched_grace').value = sched.grace_period_mins || 15;
+    document.getElementById('sched_default').checked = !!sched.is_default;
+    document.getElementById('sched_active').checked = !!sched.is_active;
+
+    const activeDays = (sched.days_of_week || '').split(',').map(s => s.trim());
+    document.querySelectorAll('.day-checkbox').forEach(cb => {
+      cb.checked = activeDays.includes(cb.value);
+    });
+
+    document.getElementById('scheduleModal').classList.add('active');
+  }
+
+  function closeModal() {
+    document.getElementById('scheduleModal').classList.remove('active');
+  }
+
+  window.onclick = function(event) {
+    const modal = document.getElementById('scheduleModal');
+    if (event.target === modal) {
+      closeModal();
+    }
+  };
+</script>
+{% endblock %}

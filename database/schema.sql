@@ -24,17 +24,38 @@ CREATE TABLE IF NOT EXISTS face_encodings (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS schedules (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'student'
+                  CHECK (role IN ('student', 'faculty')),
+    department    TEXT,
+    days_of_week  TEXT NOT NULL DEFAULT 'Monday,Tuesday,Wednesday,Thursday,Friday',
+    start_time    TIME NOT NULL DEFAULT '08:00:00',
+    end_time      TIME NOT NULL DEFAULT '17:00:00',
+    grace_period_mins INTEGER NOT NULL DEFAULT 15,
+    is_default    INTEGER NOT NULL DEFAULT 0,
+    is_active     INTEGER NOT NULL DEFAULT 1,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS attendance (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    date       DATE NOT NULL,
-    time_in    TIME,
-    time_out   TIME,
-    status     TEXT NOT NULL DEFAULT 'present'
-               CHECK (status IN ('present','late','absent','manual')),
-    confidence FLOAT,
-    marked_by  INT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    date          DATE NOT NULL,
+    time_in       TIME,
+    time_out      TIME,
+    status        TEXT NOT NULL DEFAULT 'present'
+                  CHECK (status IN ('present','late','absent','manual')),
+    confidence    FLOAT,
+    marked_by     INT,
+    schedule_id   INTEGER REFERENCES schedules(id),
+    late_minutes  INTEGER DEFAULT 0,
+    late_reason   TEXT DEFAULT '',
+    late_remarks  TEXT DEFAULT '',
+    scanner_id    TEXT DEFAULT 'Main Kiosk',
+    is_excused    INTEGER DEFAULT 0,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id, date)
 );
 

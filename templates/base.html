@@ -83,6 +83,18 @@
           </a>
         </li>
         <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'admin.schedules' %}active{% endif %}"
+             href="{{ url_for('admin.schedules') }}">
+            Schedules
+          </a>
+        </li>
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'attendance.lateness' %}active{% endif %}"
+             href="{{ url_for('attendance.lateness') }}">
+            Lateness
+          </a>
+        </li>
+        <li class="page-item">
           <a class="nav-link {% if request.endpoint == 'attendance.reports' %}active{% endif %}"
              href="{{ url_for('attendance.reports') }}">
             Reports
@@ -107,6 +119,18 @@
           <a class="nav-link {% if request.endpoint == 'attendance.kiosk' %}active{% endif %}"
              href="{{ url_for('attendance.kiosk') }}">
             Kiosk
+          </a>
+        </li>
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'admin.schedules' %}active{% endif %}"
+             href="{{ url_for('admin.schedules') }}">
+            Schedules
+          </a>
+        </li>
+        <li class="page-item">
+          <a class="nav-link {% if request.endpoint == 'attendance.lateness' %}active{% endif %}"
+             href="{{ url_for('attendance.lateness') }}">
+            Lateness
           </a>
         </li>
         <li class="page-item">

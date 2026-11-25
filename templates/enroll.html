@@ -696,27 +696,6 @@
           <div class="invalid-feedback" id="id-number-error" role="alert"></div>
         </div>
 
-        <!-- Department -->
-        <div class="form-group">
-          <label class="form-label" for="department">
-            Department <span class="required" aria-hidden="true">*</span>
-          </label>
-          <input
-            id="department"
-            name="department"
-            type="text"
-            class="form-control"
-            placeholder="e.g. College of Engineering"
-            minlength="1"
-            maxlength="100"
-            required
-            aria-required="true"
-            aria-describedby="department-hint"
-          />
-          <span id="department-hint" class="form-hint">1--00 characters.</span>
-          <div class="invalid-feedback" id="department-error" role="alert"></div>
-        </div>
-
         <!-- Role -->
         <div class="form-group">
           <label class="form-label" for="role">
@@ -728,14 +707,53 @@
             class="form-control"
             required
             aria-required="true"
+            onchange="handleEnrollRoleChange(this.value)"
           >
-            <option value="" disabled selected>Select a role</option>
-            <option value="student">Student</option>
+            <option value="student" selected>Student</option>
             <option value="faculty">Faculty / Staff</option>
             <option value="admin">Admin</option>
           </select>
           <div class="invalid-feedback" id="role-error" role="alert"></div>
         </div>
+
+        <!-- Student Program (BSA, BSBA, BSIT, BSCE, BSIE) -->
+        <div class="form-group" id="student-program-group">
+          <label class="form-label" for="student-program-select">
+            Student Program / Course <span class="required" aria-hidden="true">*</span>
+          </label>
+          <select
+            id="student-program-select"
+            class="form-control"
+            onchange="syncStudentProgram(this.value)"
+          >
+            <option value="BSA">BSA — Bachelor of Science in Accountancy</option>
+            <option value="BSBA">BSBA — Bachelor of Science in Business Administration</option>
+            <option value="BSIT" selected>BSIT — Bachelor of Science in Information Technology</option>
+            <option value="BSCE">BSCE — Bachelor of Science in Civil Engineering</option>
+            <option value="BSIE">BSIE — Bachelor of Science in Industrial Engineering</option>
+          </select>
+          <span class="form-hint">Choose student's degree program.</span>
+        </div>
+
+        <!-- Faculty / Staff Department (shown when role is Faculty/Admin) -->
+        <div class="form-group" id="faculty-department-group" style="display:none;">
+          <label class="form-label" for="faculty-department-input">
+            Faculty Department / Office <span class="required" aria-hidden="true">*</span>
+          </label>
+          <input
+            id="faculty-department-input"
+            type="text"
+            class="form-control"
+            placeholder="e.g. College of Computer Studies, College of Engineering"
+            maxlength="100"
+            oninput="syncFacultyDepartment(this.value)"
+          />
+          <span class="form-hint">Department or academic unit.</span>
+        </div>
+
+        <!-- Department input store (submitted to backend) -->
+        <input type="hidden" id="department" name="department" value="BSIT" required />
+        <div class="invalid-feedback" id="department-error" role="alert"></div>
 
         <!-- RA 10173 Consent -->
         <div class="consent-box">
@@ -811,5 +829,29 @@
     captureQuality: 0.85,     // JPEG quality for face samples
     apiUrl: '/api/enroll'
   };
+
+  function handleEnrollRoleChange(role) {
+    var studentGroup = document.getElementById('student-program-group');
+    var facultyGroup = document.getElementById('faculty-department-group');
+    var deptHidden = document.getElementById('department');
+
+    if (role === 'student') {
+      studentGroup.style.display = '';
+      facultyGroup.style.display = 'none';
+      deptHidden.value = document.getElementById('student-program-select').value;
+    } else {
+      studentGroup.style.display = 'none';
+      facultyGroup.style.display = '';
+      deptHidden.value = document.getElementById('faculty-department-input').value.trim() || 'General Faculty';
+    }
+  }
+
+  function syncStudentProgram(val) {
+    document.getElementById('department').value = val;
+  }
+
+  function syncFacultyDepartment(val) {
+    document.getElementById('department').value = val.trim();
+  }
 </script>
 {% endblock %}

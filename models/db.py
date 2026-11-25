@@ -13,15 +13,36 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # DB path: %APPDATA%\SmartFace\smartface.db  (or ~/SmartFace/ on non-Windows)
+# Fallback to project database directory if APPDATA is not writable.
 # ---------------------------------------------------------------------------
-_DB_PATH = os.path.join(
-    os.environ.get("APPDATA", os.path.expanduser("~")),
-    "SmartFace",
-    "smartface.db",
-)
+def _resolve_db_path() -> str:
+    custom = os.environ.get("DATABASE_PATH") or os.environ.get("SMARTFACE_DB_PATH")
+    if custom:
+        os.makedirs(os.path.dirname(os.path.abspath(custom)), exist_ok=True)
+        return os.path.abspath(custom)
 
-# Ensure the directory exists
-os.makedirs(os.path.dirname(_DB_PATH), exist_ok=True)
+    appdata_dir = os.path.join(
+        os.environ.get("APPDATA", os.path.expanduser("~")),
+        "SmartFace",
+    )
+    try:
+        os.makedirs(appdata_dir, exist_ok=True)
+        test_file = os.path.join(appdata_dir, ".test_write")
+        with open(test_file, "w") as f:
+            f.write("ok")
+        os.remove(test_file)
+        return os.path.join(appdata_dir, "smartface.db")
+    except Exception:
+        import sys
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        fallback_dir = os.path.join(base_dir, "database")
+        os.makedirs(fallback_dir, exist_ok=True)
+        return os.path.join(fallback_dir, "smartface.db")
+
+_DB_PATH = _resolve_db_path()
 
 # Thread-local storage for per-thread connections
 _local = threading.local()

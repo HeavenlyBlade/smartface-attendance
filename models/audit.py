@@ -17,6 +17,10 @@ ACTION_MANUAL_OVERRIDE   = 'manual_attendance_override'
 ACTION_DEACTIVATE        = 'user_deactivated'
 ACTION_BIOMETRIC_DELETE  = 'biometric_data_deleted'
 ACTION_USER_DELETED      = 'user_deleted'
+ACTION_SCHEDULE_CREATE   = 'schedule_created'
+ACTION_SCHEDULE_UPDATE   = 'schedule_updated'
+ACTION_SCHEDULE_DELETE   = 'schedule_deleted'
+ACTION_UPDATE_LATE_REASON= 'late_reason_updated'
 
 
 def write_audit(

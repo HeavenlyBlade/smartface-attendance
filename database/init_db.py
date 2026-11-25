@@ -16,7 +16,8 @@ def init_db() -> None:
         ).fetchone()[0]
 
         if count > 0:
-            print("[init_db] Tables exist, skipping schema.", flush=True)
+            print("[init_db] Tables exist, ensuring migrations...", flush=True)
+            _ensure_migrations(conn)
             _ensure_seeded()
             return
 
@@ -33,10 +34,63 @@ def init_db() -> None:
         sql = schema.read_text(encoding="utf-8")
         conn.executescript(sql)
         print("[init_db] Tables created.", flush=True)
+        _ensure_migrations(conn)
         _ensure_seeded()
     except Exception as exc:
         print(f"[init_db] ERROR: {exc}", flush=True)
         logger.error("init_db failed: %s", exc)
+
+
+def _ensure_migrations(conn) -> None:
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS schedules (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                name          TEXT NOT NULL,
+                role          TEXT NOT NULL DEFAULT 'student',
+                department    TEXT,
+                days_of_week  TEXT NOT NULL DEFAULT 'Monday,Tuesday,Wednesday,Thursday,Friday',
+                start_time    TIME NOT NULL DEFAULT '08:00:00',
+                end_time      TIME NOT NULL DEFAULT '17:00:00',
+                grace_period_mins INTEGER NOT NULL DEFAULT 15,
+                is_default    INTEGER NOT NULL DEFAULT 0,
+                is_active     INTEGER NOT NULL DEFAULT 1,
+                created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        sched_cols = [r[1] for r in conn.execute("PRAGMA table_info(schedules)").fetchall()]
+        if "role" not in sched_cols:
+            conn.execute("ALTER TABLE schedules ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
+
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(attendance)").fetchall()]
+        if "schedule_id" not in cols:
+            conn.execute("ALTER TABLE attendance ADD COLUMN schedule_id INTEGER REFERENCES schedules(id)")
+        if "late_minutes" not in cols:
+            conn.execute("ALTER TABLE attendance ADD COLUMN late_minutes INTEGER DEFAULT 0")
+        if "late_reason" not in cols:
+            conn.execute("ALTER TABLE attendance ADD COLUMN late_reason TEXT DEFAULT ''")
+        if "late_remarks" not in cols:
+            conn.execute("ALTER TABLE attendance ADD COLUMN late_remarks TEXT DEFAULT ''")
+        if "scanner_id" not in cols:
+            conn.execute("ALTER TABLE attendance ADD COLUMN scanner_id TEXT DEFAULT 'Main Kiosk'")
+        if "is_excused" not in cols:
+            conn.execute("ALTER TABLE attendance ADD COLUMN is_excused INTEGER DEFAULT 0")
+
+        sched_cnt = conn.execute("SELECT COUNT(*) FROM schedules").fetchone()[0]
+        if sched_cnt == 0:
+            conn.execute("""
+                INSERT INTO schedules (name, role, department, days_of_week, start_time, end_time, grace_period_mins, is_default, is_active)
+                VALUES ('Default Student Schedule', 'student', '', 'Monday,Tuesday,Wednesday,Thursday,Friday', '08:00:00', '17:00:00', 15, 1, 1)
+            """)
+        fac_cnt = conn.execute("SELECT COUNT(*) FROM schedules WHERE role = 'faculty'").fetchone()[0]
+        if fac_cnt == 0:
+            conn.execute("""
+                INSERT INTO schedules (name, role, department, days_of_week, start_time, end_time, grace_period_mins, is_default, is_active)
+                VALUES ('Default Faculty Schedule', 'faculty', '', 'Monday,Tuesday,Wednesday,Thursday,Friday', '07:30:00', '17:30:00', 15, 1, 1)
+            """)
+        conn.commit()
+    except Exception as e:
+        logger.warning("_ensure_migrations encountered warning: %s", e)
 
 
 def _ensure_seeded() -> None:
@@ -55,8 +109,22 @@ def _ensure_seeded() -> None:
 
 
 def _run_seed() -> None:
-    seed_path = str(pathlib.Path(__file__).parent / "seed.py")
-    spec = importlib.util.spec_from_file_location("seed", seed_path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    mod.seed()
+    try:
+        from database import seed
+        seed.seed()
+        return
+    except Exception as e:
+        logger.debug("direct import of database.seed failed: %s, falling back to file loader", e)
+
+    seed_path = pathlib.Path(__file__).parent / "seed.py"
+    if not seed_path.exists():
+        import sys as _sys
+        if getattr(_sys, 'frozen', False):
+            seed_path = pathlib.Path(_sys._MEIPASS) / "database" / "seed.py"
+
+    if seed_path.exists():
+        spec = importlib.util.spec_from_file_location("seed", str(seed_path))
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mod.seed()

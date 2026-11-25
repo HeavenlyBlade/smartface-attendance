@@ -27,17 +27,51 @@ if bundle_dir not in sys.path:
 os.chdir(bundle_dir)
 
 # ---------------------------------------------------------------------------
-# Log to %APPDATA%\SmartFace\smartface.log so errors are visible
+# Robust logging to file (fallback to bundle dir, home, or temp)
 # ---------------------------------------------------------------------------
-_app_data = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'SmartFace')
-os.makedirs(_app_data, exist_ok=True)
-_log_path = os.path.join(_app_data, 'smartface.log')
+import tempfile
 
-logging.basicConfig(
-    filename=_log_path,
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-)
+def _setup_logger():
+    exe_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else bundle_dir
+    log_candidates = [
+        os.path.join(exe_dir, 'smartface.log'),
+        os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'SmartFace', 'smartface.log'),
+        os.path.join(bundle_dir, 'smartface.log'),
+        os.path.join(os.path.expanduser('~'), 'SmartFace', 'smartface.log'),
+        os.path.join(os.path.expanduser('~'), 'smartface.log'),
+        os.path.join(tempfile.gettempdir(), 'smartface.log'),
+    ]
+    chosen_path = None
+    for p in log_candidates:
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(p)), exist_ok=True)
+            with open(p, 'a', encoding='utf-8') as f:
+                f.write('')
+            chosen_path = p
+            break
+        except Exception:
+            continue
+
+    handlers = []
+    if chosen_path:
+        try:
+            handlers.append(logging.FileHandler(chosen_path, encoding='utf-8'))
+        except Exception:
+            pass
+    if sys.stdout is not None:
+        try:
+            handlers.append(logging.StreamHandler(sys.stdout))
+        except Exception:
+            pass
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=handlers,
+    )
+    return chosen_path or 'console'
+
+_log_path = _setup_logger()
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -62,8 +96,10 @@ if getattr(sys, 'frozen', False):
 # Server
 # ---------------------------------------------------------------------------
 URL = 'http://localhost:5000'
+_server_error = None
 
 def _serve():
+    global _server_error
     try:
         from waitress import serve
         from app import create_app
@@ -72,11 +108,14 @@ def _serve():
         logger.info('SmartFace server ready at %s', URL)
         serve(app, host='127.0.0.1', port=5000, threads=8)
     except Exception as exc:
+        _server_error = str(exc)
         logger.exception('Server crashed: %s', exc)
 
 def _wait_for_server(timeout=15):
     deadline = time.time() + timeout
     while time.time() < deadline:
+        if _server_error:
+            return False
         try:
             urllib.request.urlopen(URL + '/login', timeout=1)
             return True
@@ -95,13 +134,13 @@ if __name__ == '__main__':
         logger.info('Browser opened at %s', URL)
         webbrowser.open(URL)
     else:
-        logger.error('Server did not respond within 15 seconds')
-        # Show a simple Windows message box since there's no console
+        logger.error('Server did not respond within 15 seconds: %s', _server_error)
+        err_detail = f"\n\nError: {_server_error}" if _server_error else ""
         try:
             import ctypes
             ctypes.windll.user32.MessageBoxW(
                 0,
-                f'SmartFace failed to start.\n\nCheck the log at:\n{_log_path}',
+                f'SmartFace failed to start.{err_detail}\n\nCheck the log at:\n{_log_path}',
                 'SmartFace Error',
                 0x10  # MB_ICONERROR
             )

@@ -35,9 +35,22 @@ _cache_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 # Liveness detection — EAR (Eye Aspect Ratio) blink detection
 # ---------------------------------------------------------------------------
-_PREDICTOR_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "models", "shape_predictor_68_face_landmarks.dat")
-)
+def _resolve_predictor_path() -> str:
+    import sys
+    if getattr(sys, 'frozen', False):
+        base = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+        p = os.path.join(base, "models", "shape_predictor_68_face_landmarks.dat")
+        if os.path.exists(p):
+            return os.path.abspath(p)
+    p = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models", "shape_predictor_68_face_landmarks.dat"))
+    if os.path.exists(p):
+        return p
+    cwd_p = os.path.abspath(os.path.join("models", "shape_predictor_68_face_landmarks.dat"))
+    if os.path.exists(cwd_p):
+        return cwd_p
+    return p
+
+_PREDICTOR_PATH = _resolve_predictor_path()
 _predictor  = None
 _dlib_hog   = None
 _predictor_lock = threading.Lock()
@@ -68,31 +81,35 @@ def _ear(pts) -> float:
     C = d(pts[0], pts[3])
     return (A + B) / (2.0 * C + 1e-6)
 
-def _frame_ear(gray) -> float:
-    """Compute mean EAR for the largest face in a grayscale frame."""
+def _face_ear(gray, loc=None) -> float:
+    """Compute mean EAR for a face. If loc is provided, uses bounding box directly."""
     _load_predictor()
     if _predictor is None:
-        return 0.3  # assume open if predictor unavailable
+        return 0.35  # assume open if predictor unavailable
     try:
-        faces = _dlib_hog(gray, 0)
-        if not faces:
-            return 0.3
-        shape = _predictor(gray, faces[0])
+        import dlib
+        if loc is not None:
+            t, r, b, l = loc
+            rect = dlib.rectangle(int(l), int(t), int(r), int(b))
+        else:
+            faces = _dlib_hog(gray, 0)
+            if not faces:
+                return 0.35
+            rect = faces[0]
+        shape = _predictor(gray, rect)
         L = [(shape.part(i).x, shape.part(i).y) for i in range(36, 42)]
         R = [(shape.part(i).x, shape.part(i).y) for i in range(42, 48)]
         return (_ear(L) + _ear(R)) / 2.0
-    except Exception:
-        return 0.3
+    except Exception as exc:
+        logger.debug("_face_ear error: %s", exc)
+        return 0.35
+
+_frame_ear = _face_ear
 
 # Liveness state: uid -> {blinked, frames_closed}
 _liveness: dict = {}
 _EAR_THRESH = 0.22   # below this = eyes closed
-_EAR_FRAMES = 2      # consecutive closed frames = blink confirmed
-
-# ---------------------------------------------------------------------------
-# No-face cooldown — skip detection for 400 ms after a no-face result
-# ---------------------------------------------------------------------------
-_last_no_face_time: float = 0.0
+_EAR_FRAMES = 1      # single closed frame = blink confirmed
 
 def reset_liveness_state(uid=None):
     """Reset blink state. uid=None resets all users."""
@@ -261,14 +278,8 @@ def _get_user_name(user_id: int) -> str:
 
 
 def recognize_frame(image_b64: str) -> list:
-    global _last_no_face_time
-
     if not FACE_RECOGNITION_AVAILABLE:
         logger.error("recognize_frame: face_recognition not available")
-        return []
-
-    # No-face cooldown: skip detection entirely for 400 ms after a no-face result
-    if time.time() - _last_no_face_time < 0.4:
         return []
 
     # Step 1: Decode base64 JPEG to numpy array
@@ -282,28 +293,49 @@ def recognize_frame(image_b64: str) -> list:
     if frame is None:
         raise ValueError("Could not decode image")
 
-    # Step 2: Downscale 0.5x -- ~2x speedup for usable framerate
-    small = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
+    # Step 2: Adaptive downscale for fast face detection (320px width)
+    h, w = frame.shape[:2]
+    if w > 320:
+        fx = 320.0 / w
+        small = cv2.resize(frame, (0, 0), fx=fx, fy=fx)
+        inv_scale = 1.0 / fx
+    else:
+        small = frame
+        inv_scale = 1.0
 
     # Step 3: BGR -> RGB (face_recognition expects RGB input)
-    rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
-    gray_small = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+    rgb_small = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
 
     # Step 4: Detect face bounding boxes in the downscaled frame
-    # HOG is used here (was: cnn) — ~5-10x faster, CPU-only, good for real-time kiosk use
-    locs = face_recognition.face_locations(rgb, model="hog")
+    locs_raw = face_recognition.face_locations(rgb_small, model="hog")
+    if not locs_raw:
+        return []
 
-    # Step 5: Compute 128-dim facial encodings for each detected face
-    encs = face_recognition.face_encodings(rgb, locs, num_jitters=1)
+    # Scale bounding boxes back to full-frame dimensions
+    if inv_scale != 1.0:
+        locs = [
+            (
+                int(round(t * inv_scale)),
+                int(round(r * inv_scale)),
+                int(round(b * inv_scale)),
+                int(round(l * inv_scale)),
+            )
+            for t, r, b, l in locs_raw
+        ]
+    else:
+        locs = list(locs_raw)
 
-    if not locs:
-        _last_no_face_time = time.time()
+    # Step 5: Compute 128-dim facial encodings using crisp full-frame
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    encs = face_recognition.face_encodings(rgb_frame, locs, num_jitters=1, model="small")
+    if not encs:
         return []
 
     with _cache_lock:
         enc_snapshot = list(known_encodings)
         uid_snapshot = list(known_user_ids)
 
+    gray_frame = None
     results = []
     for enc, loc in zip(encs, locs):
         if enc_snapshot:
@@ -316,42 +348,39 @@ def recognize_frame(image_b64: str) -> list:
 
         # Step 7: Match within TOLERANCE + LIVENESS check (EAR blink detection)
         # LIVENESS HOOK: Eye Aspect Ratio blink detection implemented here.
-        # Requires one confirmed blink before each match acceptance.
+        # Requires one confirmed blink before each match acceptance when enabled.
         # Mitigates static photo spoofing; video replay can defeat blink detection.
         uid, name, confidence = None, "Unknown", None
         if enc_snapshot and best_dist <= config.TOLERANCE:
             cand_uid = uid_snapshot[best_index]
-            state = _liveness.setdefault(cand_uid, {"blinked": False, "frames_closed": 0})
-            if not state["blinked"]:
-                gray_l = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                ear = _frame_ear(gray_l)
-                if ear < _EAR_THRESH:
-                    state["frames_closed"] += 1
-                    if state["frames_closed"] >= _EAR_FRAMES:
-                        state["blinked"] = True
-                        logger.info("Liveness confirmed uid=%s (EAR=%.3f)", cand_uid, ear)
+            if config.REQUIRE_LIVENESS:
+                state = _liveness.setdefault(cand_uid, {"blinked": False, "frames_closed": 0})
+                if not state["blinked"]:
+                    if gray_frame is None:
+                        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    ear = _face_ear(gray_frame, loc)
+                    if ear < _EAR_THRESH:
+                        state["frames_closed"] += 1
+                        if state["frames_closed"] >= _EAR_FRAMES:
+                            state["blinked"] = True
+                            logger.info("Liveness confirmed uid=%s (EAR=%.3f)", cand_uid, ear)
+                    else:
+                        state["frames_closed"] = 0
+                if state["blinked"]:
+                    uid        = cand_uid
+                    name       = _get_user_name(uid)
+                    confidence = compute_confidence(best_dist)
                 else:
-                    state["frames_closed"] = 0
-            if state["blinked"]:
+                    uid        = None
+                    name       = f"Verifying ({_get_user_name(cand_uid)})..."
+                    confidence = compute_confidence(best_dist)
+            else:
                 uid        = cand_uid
                 name       = _get_user_name(uid)
                 confidence = compute_confidence(best_dist)
 
-        # Step 8: Scale bounding box back to original frame dimensions (multiply by 2)
-        top, right, bottom, left = [v * 2 for v in loc]
-
-        # Step 9: Extract 68-point facial landmarks and scale to full-frame coords
-        landmarks = None
-        if _predictor is not None:
-            try:
-                import dlib
-                _load_predictor()
-                d_rect = dlib.rectangle(loc[3], loc[0], loc[1], loc[2])  # left, top, right, bottom
-                shape = _predictor(gray_small, d_rect)
-                landmarks = [[shape.part(i).x * 2, shape.part(i).y * 2] for i in range(68)]
-            except Exception as _lm_exc:
-                logger.debug("Landmark extraction failed: %s", _lm_exc)
-                landmarks = None
+        # Bounding box in original frame dimensions
+        top, right, bottom, left = loc
 
         face_dict = {
             "user_id":    uid,
@@ -359,11 +388,10 @@ def recognize_frame(image_b64: str) -> list:
             "confidence": confidence,
             "bounding_box": {"top": top, "right": right, "bottom": bottom, "left": left},
         }
-        if landmarks is not None:
-            face_dict["landmarks"] = landmarks
         results.append(face_dict)
+
         # Reset liveness so the next recognition event requires a fresh blink
-        if uid is not None:
+        if uid is not None and config.REQUIRE_LIVENESS:
             _liveness[uid] = {"blinked": False, "frames_closed": 0}
 
     return results

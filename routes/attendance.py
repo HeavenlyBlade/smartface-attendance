@@ -21,8 +21,18 @@ from flask import (
     Blueprint, flash, jsonify, redirect, render_template,
     request, session, url_for, Response,
 )
-from models.attendance import get_today_records, get_records, manual_override as db_manual_override
-from models.audit import write_audit, ACTION_MANUAL_OVERRIDE
+from models.attendance import (
+    get_today_records,
+    get_records,
+    get_lateness_records,
+    update_late_details,
+    manual_override as db_manual_override,
+)
+from models.audit import (
+    write_audit,
+    ACTION_MANUAL_OVERRIDE,
+    ACTION_UPDATE_LATE_REASON,
+)
 from models.db import execute_query
 from models.user import get_user_by_id
 from routes.auth import role_required
@@ -327,9 +337,13 @@ def my_attendance():
     student_id = session["user_id"]
     try:
         records = execute_query(
-            "SELECT date, time_in, time_out, status "
-            "FROM attendance WHERE user_id=? "
-            "ORDER BY date DESC",
+            "SELECT a.date, a.time_in, a.time_out, a.status, "
+            "       a.late_minutes, a.late_reason, a.late_remarks, a.is_excused, "
+            "       s.name AS schedule_name "
+            "FROM attendance a "
+            "LEFT JOIN schedules s ON a.schedule_id = s.id "
+            "WHERE a.user_id=? "
+            "ORDER BY a.date DESC",
             params=(student_id,), fetchall=True,
         ) or []
     except Exception as exc:
@@ -337,6 +351,126 @@ def my_attendance():
         records = []
 
     return render_template("my_attendance.html", records=records)
+
+
+# ---------------------------------------------------------------------------
+# Lateness Breakdown & Reasons
+# ---------------------------------------------------------------------------
+
+@attendance_bp.route("/lateness")
+@role_required("admin", "faculty")
+def lateness():
+    """
+    GET /lateness — Lateness Breakdown & Insights.
+    Displays why and how students got late, metrics, and reason management.
+    """
+    start_date = request.args.get("start_date", "")
+    end_date   = request.args.get("end_date", "")
+    dept       = request.args.get("department", "")
+    search     = request.args.get("search", "")
+    is_excused = request.args.get("is_excused", "")
+    try:
+        page = int(request.args.get("page", 1))
+    except (TypeError, ValueError):
+        page = 1
+
+    filters = {
+        "start_date": start_date or None,
+        "end_date": end_date or None,
+        "department": dept or None,
+        "search": search or None,
+        "is_excused": is_excused if is_excused != "" else None,
+        "page": page,
+        "per_page": 20,
+    }
+
+    try:
+        data = get_lateness_records(filters)
+        dept_rows = execute_query(
+            "SELECT DISTINCT department FROM users WHERE department IS NOT NULL AND department != '' ORDER BY department",
+            fetchall=True,
+        ) or []
+        departments = [r["department"] for r in dept_rows]
+    except Exception as exc:
+        logger.error("lateness: DB error — %s", exc)
+        data = {
+            "records": [],
+            "total": 0,
+            "pages": 1,
+            "summary": {
+                "total_late": 0,
+                "excused_count": 0,
+                "unexcused_count": 0,
+                "avg_late_mins": 0,
+                "top_students": [],
+            },
+        }
+        departments = []
+
+    standard_reasons = [
+        "Traffic / Commute Delay",
+        "Inclement Weather / Heavy Rain / Flood",
+        "Public Transit Breakdown / Delay",
+        "Medical / Health Issue",
+        "Family Emergency",
+        "Official School Activity / Event",
+        "Class Schedule / Room Conflict",
+        "Personal / Overslept",
+    ]
+
+    return render_template(
+        "lateness.html",
+        records=data["records"],
+        summary=data["summary"],
+        total=data["total"],
+        pages=data["pages"],
+        current_page=page,
+        start_date=start_date,
+        end_date=end_date,
+        department=dept,
+        search=search,
+        is_excused=is_excused,
+        departments=departments,
+        standard_reasons=standard_reasons,
+    )
+
+
+@attendance_bp.route("/lateness/<int:attendance_id>/update", methods=["POST"])
+@role_required("admin", "faculty")
+def update_lateness(attendance_id):
+    """
+    POST /lateness/<attendance_id>/update
+    Update why a student was late (reason, remarks, excused status).
+    """
+    reason = request.form.get("reason", "").strip()
+    custom_reason = request.form.get("custom_reason", "").strip()
+    remarks = request.form.get("remarks", "").strip()
+    is_excused = 1 if request.form.get("is_excused") == "1" else 0
+
+    final_reason = custom_reason if (reason == "Other" and custom_reason) else reason
+
+    admin_id = session.get("user_id")
+    try:
+        update_late_details(
+            attendance_id=attendance_id,
+            reason=final_reason,
+            remarks=remarks,
+            is_excused=is_excused,
+            admin_id=admin_id,
+        )
+        write_audit(
+            user_id=admin_id,
+            action=ACTION_UPDATE_LATE_REASON,
+            details=f"Updated lateness for record ID={attendance_id}: reason='{final_reason}', excused={is_excused}",
+            ip_address=request.remote_addr or "",
+        )
+        flash("Lateness record updated successfully.", "success")
+    except Exception as exc:
+        logger.error("update_lateness error: %s", exc)
+        flash(f"Failed to update lateness reason: {exc}", "danger")
+
+    ref = request.referrer or url_for("attendance.lateness")
+    return redirect(ref)
 
 # ---------------------------------------------------------------------------
 # PDF Export

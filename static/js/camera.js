@@ -1,6 +1,6 @@
 /**
  * static/js/camera.js  -- SmartFace Kiosk
- * 600ms server recognition loop + rAF bounding box overlay
+ * High-speed, responsive recognition loop + smooth rAF bounding box overlay
  */
 (function () {
   'use strict';
@@ -8,8 +8,9 @@
   var cfg = window.KIOSK_CONFIG || {};
   var BRIGHTNESS_THRESHOLD = cfg.brightnessThreshold !== undefined ? cfg.brightnessThreshold : 50;
   var RECOGNIZE_URL        = cfg.recognizeUrl    || '/api/recognize';
-  var CAPTURE_QUALITY      = cfg.captureQuality  || 0.7;
-  var CAPTURE_INTERVAL_MS  = cfg.captureIntervalMs || 600;
+  var CAPTURE_QUALITY      = cfg.captureQuality  || 0.72;
+  var CAPTURE_INTERVAL_MS  = cfg.captureIntervalMs || 250;
+  var TARGET_WIDTH         = 640;
 
   /* DOM */
   var video             = document.getElementById('kiosk-video');
@@ -24,17 +25,23 @@
   var overlayCtx        = overlayCanvas ? overlayCanvas.getContext('2d') : null;
 
   /* Capture state */
-  var processing            = false;
-  var audioPlaying          = false;
-  var captureTimer          = null;
+  var processing             = false;
+  var audioPlaying           = false;
+  var captureTimeout         = null;
   var currentAbortController = null;
+  var isStopped              = false;
 
-  /* Bounding box state -- updated by server every 600ms, drawn every rAF frame */
-  var lastBox      = null;   // {top, right, bottom, left} in original video coords
+  /* Audio debounce state */
+  var lastSuccessAudioTime = 0;
+  var lastSuccessAudioUid  = null;
+  var lastFailAudioTime    = 0;
+
+  /* Bounding box state -- updated by server, drawn every rAF frame */
+  var lastBox      = null;   // {top, right, bottom, left, frameW, frameH}
   var lastBoxLabel = '';
   var lastBoxColor = '';
   var lastBoxTime  = 0;
-  var BOX_TIMEOUT_MS = 2500;
+  var BOX_TIMEOUT_MS = 2200;
 
   /* -----------------------------------------------------------------------
      Canvas helpers
@@ -42,8 +49,10 @@
   function syncCanvasSize() {
     if (!overlayCanvas || !video) return;
     var rect = video.getBoundingClientRect();
-    if (overlayCanvas.width  !== rect.width)  overlayCanvas.width  = rect.width;
-    if (overlayCanvas.height !== rect.height) overlayCanvas.height = rect.height;
+    if (rect.width > 0 && rect.height > 0) {
+      if (overlayCanvas.width  !== Math.round(rect.width))  overlayCanvas.width  = Math.round(rect.width);
+      if (overlayCanvas.height !== Math.round(rect.height)) overlayCanvas.height = Math.round(rect.height);
+    }
   }
 
   /* -----------------------------------------------------------------------
@@ -58,10 +67,12 @@
 
     if (lastBox === null || (Date.now() - lastBoxTime) >= BOX_TIMEOUT_MS) return;
 
-    var scaleX = video.videoWidth  ? overlayCanvas.width  / video.videoWidth  : 1;
-    var scaleY = video.videoHeight ? overlayCanvas.height / video.videoHeight : 1;
+    var fw = lastBox.frameW || video.videoWidth || 640;
+    var fh = lastBox.frameH || video.videoHeight || 480;
+    var scaleX = overlayCanvas.width  / fw;
+    var scaleY = overlayCanvas.height / fh;
 
-    var pad = 15;
+    var pad = 12;
     /* Mirror x to match CSS scaleX(-1) on video */
     var rawL = lastBox.left  * scaleX;
     var rawR = lastBox.right * scaleX;
@@ -70,26 +81,51 @@
     var w    = (rawR - rawL) + pad * 2;
     var h    = (lastBox.bottom - lastBox.top) * scaleY + pad * 2;
 
-    /* Box stroke */
+    /* Smooth rounded box stroke */
     overlayCtx.save();
     overlayCtx.strokeStyle = lastBoxColor;
-    overlayCtx.lineWidth   = 2.5;
-    overlayCtx.strokeRect(x, y, w, h);
+    overlayCtx.lineWidth   = 3;
+    overlayCtx.shadowColor = lastBoxColor;
+    overlayCtx.shadowBlur  = 8;
+
+    if (overlayCtx.roundRect) {
+      overlayCtx.beginPath();
+      overlayCtx.roundRect(x, y, w, h, 8);
+      overlayCtx.stroke();
+    } else {
+      overlayCtx.strokeRect(x, y, w, h);
+    }
     overlayCtx.restore();
 
-    /* Label -- drawn in normal coords so text is not mirrored */
+    /* Label -- drawn in unmirrored coords for crystal clarity */
     if (lastBoxLabel) {
       overlayCtx.save();
-      overlayCtx.font         = '14px Inter, sans-serif';
-      overlayCtx.textBaseline = 'bottom';
+      overlayCtx.font         = 'bold 16px Inter, system-ui, -apple-system, sans-serif';
+      overlayCtx.textBaseline = 'middle';
       overlayCtx.textAlign    = 'left';
-      var lx = Math.max(x, 2);
-      var ly = Math.max(y - 2, 18);
+
+      var lx = Math.max(x, 4);
+      var ly = Math.max(y - 18, 16);
       var tm = overlayCtx.measureText(lastBoxLabel);
-      overlayCtx.fillStyle = lastBoxColor;
-      overlayCtx.fillRect(lx - 2, ly - 16, tm.width + 8, 20);
+      var bgW = tm.width + 16;
+      var bgH = 26;
+
+      overlayCtx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      overlayCtx.strokeStyle = lastBoxColor;
+      overlayCtx.lineWidth = 1.5;
+
+      if (overlayCtx.roundRect) {
+        overlayCtx.beginPath();
+        overlayCtx.roundRect(lx, ly - bgH / 2, bgW, bgH, 6);
+        overlayCtx.fill();
+        overlayCtx.stroke();
+      } else {
+        overlayCtx.fillRect(lx, ly - bgH / 2, bgW, bgH);
+        overlayCtx.strokeRect(lx, ly - bgH / 2, bgW, bgH);
+      }
+
       overlayCtx.fillStyle = '#ffffff';
-      overlayCtx.fillText(lastBoxLabel, lx + 2, ly);
+      overlayCtx.fillText(lastBoxLabel, lx + 8, ly);
       overlayCtx.restore();
     }
   }
@@ -99,8 +135,10 @@
   ----------------------------------------------------------------------- */
   function computeMeanBrightness(pixels) {
     var sum = 0, len = pixels.length;
-    for (var i = 0; i < len; i++) { if (i % 4 !== 3) sum += pixels[i]; }
-    return sum / (len * 0.75);
+    for (var i = 0; i < len; i += 4) {
+      sum += (pixels[i] * 0.299 + pixels[i + 1] * 0.587 + pixels[i + 2] * 0.114);
+    }
+    return sum / (len / 4);
   }
 
   /* -----------------------------------------------------------------------
@@ -120,8 +158,9 @@
     }
     if (!display) display = faces[0];
     if (kioskLastName) {
+      var isKnown = (display.user_id !== null && display.user_id !== undefined);
       kioskLastName.textContent = display.full_name || 'Unknown';
-      if (display.user_id !== null && display.user_id !== undefined) {
+      if (isKnown) {
         kioskLastName.classList.remove('unknown');
       } else {
         kioskLastName.classList.add('unknown');
@@ -137,55 +176,111 @@
   }
 
   /* -----------------------------------------------------------------------
-     Audio
+     Audio cues with smart debouncing
   ----------------------------------------------------------------------- */
   function triggerAudioCue(faces) {
     if (!faces || !faces.length || audioPlaying) return;
-    var hasMatch = false, hasUnknown = false;
+    var now = Date.now();
+    var matchedUser = null;
+    var hasUnknown = false;
+
     faces.forEach(function(f) {
-      if (f.user_id !== null && f.user_id !== undefined) hasMatch = true;
-      else hasUnknown = true;
+      if (f.user_id !== null && f.user_id !== undefined) {
+        matchedUser = f;
+      } else {
+        hasUnknown = true;
+      }
     });
-    var target = hasMatch ? successAudio : (hasUnknown ? failAudio : null);
+
+    if (matchedUser) {
+      // Debounce match sound per user to 4 seconds
+      if (lastSuccessAudioUid === matchedUser.user_id && (now - lastSuccessAudioTime) < 4000) {
+        return;
+      }
+      playAudio(successAudio);
+      lastSuccessAudioTime = now;
+      lastSuccessAudioUid  = matchedUser.user_id;
+    } else if (hasUnknown) {
+      // Debounce fail tone to 3.5 seconds
+      if ((now - lastFailAudioTime) < 3500) {
+        return;
+      }
+      playAudio(failAudio);
+      lastFailAudioTime = now;
+    }
+  }
+
+  function playAudio(target) {
     if (!target) return;
     audioPlaying = true;
-    target.currentTime = 0;
-    var p = target.play();
-    function reset() { audioPlaying = false; }
-    if (p) p.then(function() { target.addEventListener('ended', reset, { once: true }); }).catch(reset);
-    else target.addEventListener('ended', reset, { once: true });
+    try {
+      target.currentTime = 0;
+      var p = target.play();
+      function reset() { audioPlaying = false; }
+      if (p && typeof p.then === 'function') {
+        p.then(function() {
+          target.addEventListener('ended', reset, { once: true });
+        }).catch(reset);
+      } else {
+        target.addEventListener('ended', reset, { once: true });
+      }
+    } catch (e) {
+      audioPlaying = false;
+    }
   }
 
   /* -----------------------------------------------------------------------
-     Capture loop -- 600ms, processing lock, AbortController
+     Capture loop -- fast self-scheduling with payload downscaling
   ----------------------------------------------------------------------- */
+  function scheduleNextTick(delayMs) {
+    if (isStopped) return;
+    if (captureTimeout !== null) clearTimeout(captureTimeout);
+    captureTimeout = setTimeout(captureTick, delayMs || CAPTURE_INTERVAL_MS);
+  }
+
   function captureTick() {
-    if (document.visibilityState === 'hidden') return;
+    if (document.visibilityState === 'hidden' || isStopped) return;
     if (processing) return;
+    if (!video || video.readyState < 2) {
+      scheduleNextTick(150);
+      return;
+    }
+
     processing = true;
 
-    if (currentAbortController) currentAbortController.abort();
+    if (currentAbortController) {
+      try { currentAbortController.abort(); } catch (e) {}
+    }
     currentAbortController = new AbortController();
     var signal = currentAbortController.signal;
 
-    var cap = document.createElement('canvas');
-    cap.width  = video.videoWidth  || 640;
-    cap.height = video.videoHeight || 480;
-    var ctx = cap.getContext('2d');
-    ctx.drawImage(video, 0, 0, cap.width, cap.height);
+    // Capture at optimal processing width (640px)
+    var vw = video.videoWidth || 640;
+    var vh = video.videoHeight || 480;
+    var scale = Math.min(1.0, TARGET_WIDTH / vw);
+    var capW = Math.round(vw * scale);
+    var capH = Math.round(vh * scale);
 
-    var imgData = ctx.getImageData(0, 0, cap.width, cap.height);
+    var cap = document.createElement('canvas');
+    cap.width  = capW;
+    cap.height = capH;
+    var ctx = cap.getContext('2d');
+    ctx.drawImage(video, 0, 0, capW, capH);
+
+    // Fast brightness check
+    var imgData = ctx.getImageData(0, 0, capW, capH);
     var mean = computeMeanBrightness(imgData.data);
     if (brightnessWarning) {
       brightnessWarning.style.display = mean < BRIGHTNESS_THRESHOLD ? 'flex' : 'none';
     }
 
     var b64 = cap.toDataURL('image/jpeg', CAPTURE_QUALITY).split(',')[1];
+    var scannerId = window.SMARTFACE_SCANNER_ID || localStorage.getItem('smartface_scanner_id') || 'Main Kiosk';
 
     fetch(RECOGNIZE_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ image: b64 }),
+      body:    JSON.stringify({ image: b64, scanner_id: scannerId }),
       signal:  signal
     })
     .then(function(r) { return r.json(); })
@@ -202,35 +297,61 @@
         if (!face) face = faces[0];
 
         var bb = face.bounding_box;
-        lastBox      = { top: bb.top, right: bb.right, bottom: bb.bottom, left: bb.left };
-        lastBoxTime  = Date.now();
+        lastBox = {
+          top:     bb.top,
+          right:   bb.right,
+          bottom:  bb.bottom,
+          left:    bb.left,
+          frameW:  capW,
+          frameH:  capH
+        };
+        lastBoxTime = Date.now();
 
-        var isKnown  = (face.user_id !== null && face.user_id !== undefined);
-        lastBoxColor = isKnown ? '#22c55e' : '#ef4444';
-        lastBoxLabel = isKnown
-          ? face.full_name + (face.confidence != null ? ' ' + face.confidence.toFixed(1) + '%' : '')
-          : 'Unknown';
+        var isKnown = (face.user_id !== null && face.user_id !== undefined);
+        var isVerifying = !isKnown && face.full_name && face.full_name.indexOf('Verifying') !== -1;
+
+        if (isKnown) {
+          lastBoxColor = '#22c55e'; // Emerald
+          lastBoxLabel = face.full_name + (face.confidence != null ? ' ' + face.confidence.toFixed(1) + '%' : '');
+        } else if (isVerifying) {
+          lastBoxColor = '#38bdf8'; // Sky blue
+          lastBoxLabel = face.full_name;
+        } else {
+          lastBoxColor = '#ef4444'; // Red
+          lastBoxLabel = 'Unknown';
+        }
       }
 
       updateFaceStatus(faces);
       updateStatusBar(faces);
       triggerAudioCue(faces);
+
       processing = false;
+      scheduleNextTick(CAPTURE_INTERVAL_MS);
     })
     .catch(function(err) {
       if (err && err.name === 'AbortError') return;
       processing = false;
       updateFaceStatus([]);
+      scheduleNextTick(CAPTURE_INTERVAL_MS);
     });
   }
 
   function startCaptureLoop() {
-    if (captureTimer !== null) return;
-    captureTimer = setInterval(captureTick, CAPTURE_INTERVAL_MS);
+    isStopped = false;
+    scheduleNextTick(100);
   }
 
   function stopCaptureLoop() {
-    if (captureTimer !== null) { clearInterval(captureTimer); captureTimer = null; }
+    isStopped = true;
+    if (captureTimeout !== null) {
+      clearTimeout(captureTimeout);
+      captureTimeout = null;
+    }
+    if (currentAbortController) {
+      try { currentAbortController.abort(); } catch (e) {}
+    }
+    processing = false;
   }
 
   document.addEventListener('visibilitychange', function() {
@@ -251,14 +372,20 @@
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       showCameraError(); return;
     }
-    navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } })
+    navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: 'user'
+      }
+    })
       .then(function(stream) {
         video.srcObject = stream;
         video.onloadedmetadata = function() {
           video.play();
           syncCanvasSize();
           startCaptureLoop();
-          drawBox();  // start the rAF drawing loop
+          drawBox();  // start rAF drawing loop
         };
       })
       .catch(function() { showCameraError(); });

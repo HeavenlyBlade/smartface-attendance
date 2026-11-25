@@ -341,9 +341,14 @@
      Displays the last recognized name or an idle message.
      camera.js updates #kiosk-last-name on each recognition result.
   ------------------------------------------------------------ #}
-  <div class="kiosk-status-bar" aria-live="polite" aria-atomic="true">
-    <span id="kiosk-idle-text">Waiting for face…</span>
-    <span id="kiosk-last-name" class="kiosk-last-name" style="display:none;"></span>
+  <div class="kiosk-status-bar" aria-live="polite" aria-atomic="true" style="display:flex; align-items:center; justify-content:space-between;">
+    <div>
+      <span id="kiosk-idle-text">Waiting for face…</span>
+      <span id="kiosk-last-name" class="kiosk-last-name" style="display:none;"></span>
+    </div>
+    <div id="kiosk-station-pill" style="font-size:0.82rem; background:#1e293b; border:1px solid #334155; color:#94a3b8; padding:0.25rem 0.6rem; border-radius:6px; cursor:pointer;" onclick="changeScannerStation()" title="Click to rename this FaceScanner Station">
+      Scanner: <strong id="kiosk-station-name" style="color:#D4AF37;">Main Kiosk</strong>
+    </div>
   </div>
 
 </div>{# /kiosk-shell #}
@@ -377,13 +382,37 @@
 ================================================================ #}
 <script>
   window.KIOSK_CONFIG = {
-    brightnessThreshold: {{ brightness_threshold }},
+    brightnessThreshold: Number("{{ brightness_threshold }}") || 40,
     recognizeUrl:        '/api/recognize',
     overlayFontSize:     '2rem',   /* label font size drawn on canvas  E≥ 2rem per spec */
     overlayLineWidth:    3,        /* bounding-box stroke width in pixels */
-    captureQuality:      0.7,      /* JPEG quality for toDataURL  EReq 5.3 */
-    captureIntervalMs: 800      /* frame capture interval  EReq 5.3 */
+    captureQuality:      0.72,     /* JPEG quality for toDataURL  EReq 5.3 */
+    captureIntervalMs:   250       /* fast adaptive scan loop interval */
   };
+
+  // Multi-Scanner Station Identifier
+  (function() {
+    var urlParams = new URLSearchParams(window.location.search);
+    var stationParam = urlParams.get('station');
+    if (stationParam) {
+      localStorage.setItem('smartface_scanner_id', stationParam);
+    }
+    var currentStation = localStorage.getItem('smartface_scanner_id') || 'Main Kiosk';
+    window.SMARTFACE_SCANNER_ID = currentStation;
+    var el = document.getElementById('kiosk-station-name');
+    if (el) el.textContent = currentStation;
+  })();
+
+  function changeScannerStation() {
+    var current = localStorage.getItem('smartface_scanner_id') || 'Main Kiosk';
+    var next = prompt('Enter FaceScanner Station Name (e.g. Gate 1, North Gate, Room 101):', current);
+    if (next && next.trim()) {
+      localStorage.setItem('smartface_scanner_id', next.trim());
+      window.SMARTFACE_SCANNER_ID = next.trim();
+      var el = document.getElementById('kiosk-station-name');
+      if (el) el.textContent = next.trim();
+    }
+  }
 </script>
 
 {# camera.js  Eframe capture loop, overlay drawing, audio cues #}

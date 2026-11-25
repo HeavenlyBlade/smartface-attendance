@@ -12,8 +12,8 @@ _frm_models_dir = os.path.join(os.path.dirname(face_recognition_models.__file__)
 added_files = [
     ('templates',        'templates'),
     ('static',           'static'),
-    ('database/schema.sql', 'database'),
-    # face_recognition_models  Emust be at face_recognition_models/models/ in bundle
+    ('database',         'database'),
+    # face_recognition_models models dir
     (_frm_models_dir, 'face_recognition_models/models'),
     # face_recognition_models package __init__ files
     (os.path.dirname(face_recognition_models.__file__), 'face_recognition_models'),
@@ -39,6 +39,7 @@ a = Analysis(
         'waitress',
         'werkzeug',
         'werkzeug.serving',
+        'werkzeug.security',
         'jinja2',
         'jinja2.ext',
         'click',
@@ -53,6 +54,25 @@ a = Analysis(
         'dotenv',
         'hypothesis',
         'psutil',
+        'app',
+        'config',
+        'database',
+        'database.init_db',
+        'database.seed',
+        'models',
+        'models.db',
+        'models.user',
+        'models.attendance',
+        'models.audit',
+        'models.schedule',
+        'routes',
+        'routes.auth',
+        'routes.admin',
+        'routes.attendance',
+        'routes.api',
+        'services',
+        'services.face_service',
+        'services.attendance_service',
     ],
     hookspath=[],
     hooksconfig={},
@@ -103,16 +123,12 @@ coll = COLLECT(
     name='SmartFace',
 )
 
-# Post-build: inject icon directly into the exe using rcedit
-# This ensures the icon shows correctly in Windows Explorer
-import subprocess, shutil
-_rcedit = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'rcedit.exe')
-_built_exe = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'dist', 'SmartFace', 'SmartFace.exe')
-_ico = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'static', 'img', 'smartface.ico')
-if os.path.exists(_rcedit) and os.path.exists(_built_exe) and os.path.exists(_ico):
-    result = subprocess.run([_rcedit, _built_exe, '--set-icon', _ico], capture_output=True)
-    if result.returncode == 0:
-        print('INFO: Icon injected successfully via rcedit')
-    else:
-        print(f'WARNING: rcedit failed: {result.stderr.decode()}')
+# Post-build: Ensure .env is copied into dist/SmartFace/
+import shutil
+_spec_dir = os.path.dirname(os.path.abspath(SPEC))
+_dist_env = os.path.join(_spec_dir, 'dist', 'SmartFace', '.env')
+_src_env = os.path.join(_spec_dir, '.env')
+if os.path.exists(_src_env):
+    shutil.copy2(_src_env, _dist_env)
+    print(f'INFO: Copied .env to {_dist_env}')
 

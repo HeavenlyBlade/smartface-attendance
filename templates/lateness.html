@@ -1,0 +1,429 @@
+{% extends "base.html" %}
+{% block title %}Lateness Breakdown & Insights{% endblock %}
+
+{% block head %}
+<style>
+  .metric-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .metric-card {
+    background: var(--color-white);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .metric-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+  }
+  .metric-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--color-navy);
+    line-height: 1;
+  }
+  .metric-sub {
+    font-size: 0.82rem;
+    color: var(--color-muted);
+    margin-top: 0.5rem;
+  }
+  .filter-form {
+    background: var(--color-white);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+  }
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 140px;
+  }
+  .filter-group label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-muted);
+    text-transform: uppercase;
+  }
+  .late-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.82rem;
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+  .excused-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.75rem;
+    background: #dcfce7;
+    color: #15803d;
+  }
+  .unexcused-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.75rem;
+    background: #fef3c7;
+    color: #b45309;
+  }
+  .reason-pill {
+    display: inline-block;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #1e293b;
+  }
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+  .modal-overlay.active {
+    display: flex;
+  }
+  .modal-box {
+    background: #fff;
+    border-radius: var(--radius-md);
+    width: 100%;
+    max-width: 500px;
+    padding: 1.5rem;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+  <div class="page-header">
+    <h1 class="page-title">Lateness Breakdown & Reasons</h1>
+    <p class="page-subtitle">Understand why and how students got late, examine arrival times vs scheduled grace cutoffs, and record excused reasons.</p>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- Summary Metric Cards -->
+  <div class="metric-cards">
+    <div class="metric-card">
+      <div class="metric-title">Total Late Incidents</div>
+      <div class="metric-value">{{ summary.total_late }}</div>
+      <div class="metric-sub">
+        <span class="unexcused-badge">{{ summary.unexcused_count }} Unexcused</span>
+        <span class="excused-badge">{{ summary.excused_count }} Excused</span>
+      </div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-title">Average Minutes Late</div>
+      <div class="metric-value">{{ summary.avg_late_mins }} <span style="font-size:1.1rem; font-weight:500;">mins</span></div>
+      <div class="metric-sub">Past scheduled start time</div>
+    </div>
+    <div class="metric-card" style="grid-column: span 2;">
+      <div class="metric-title">Frequent Late Students (Top 5)</div>
+      {% if summary.top_students %}
+      <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.4rem;">
+        {% for s in summary.top_students %}
+        <span class="badge" style="background:#f1f5f9; color:#334155; padding:0.35rem 0.6rem; font-size:0.8rem;">
+          <strong>{{ s.full_name }}</strong>: {{ s.late_count }}x ({{ s.total_late_mins }} mins total)
+        </span>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="metric-sub">No repeated tardiness recorded in this period.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Filter Form -->
+  <div class="filter-form">
+    <form method="GET" action="{{ url_for('attendance.lateness') }}" novalidate>
+      <div class="filter-row">
+        <div class="filter-group">
+          <label for="f-search">Search Student</label>
+          <input id="f-search" name="search" type="text" class="form-control" placeholder="Name or ID" value="{{ search }}" />
+        </div>
+        <div class="filter-group">
+          <label for="f-start">Start Date</label>
+          <input id="f-start" name="start_date" type="date" class="form-control" value="{{ start_date }}" />
+        </div>
+        <div class="filter-group">
+          <label for="f-end">End Date</label>
+          <input id="f-end" name="end_date" type="date" class="form-control" value="{{ end_date }}" />
+        </div>
+        <div class="filter-group">
+          <label for="f-dept">Department</label>
+          <select id="f-dept" name="department" class="form-control">
+            <option value="">All Departments</option>
+            {% for d in departments %}
+            <option value="{{ d }}" {% if department == d %}selected{% endif %}>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="f-excused">Status</label>
+          <select id="f-excused" name="is_excused" class="form-control">
+            <option value="">All Statuses</option>
+            <option value="0" {% if is_excused == '0' %}selected{% endif %}>Unexcused</option>
+            <option value="1" {% if is_excused == '1' %}selected{% endif %}>Excused</option>
+          </select>
+        </div>
+        <div class="filter-group" style="flex-direction:row; gap:0.5rem; align-items:flex-end;">
+          <button type="submit" class="btn btn-primary">Filter</button>
+          <a href="{{ url_for('attendance.lateness') }}" class="btn btn-outline-primary">Clear</a>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Results Table -->
+  <div class="card">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+      <span class="card-header-title">Late Records
+        <span style="font-weight:400; color:var(--color-muted); font-size:0.85rem; margin-left:0.5rem;">({{ total }} total)</span>
+      </span>
+    </div>
+    <div class="card-body" style="padding:0;">
+      {% if records %}
+      <div class="table-wrapper" style="border:none; border-radius:0;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Date & Arrival</th>
+              <th>How Late (Metric)</th>
+              <th>Schedule Applied</th>
+              <th>Scanner Station</th>
+              <th>Why Late (Reason & Remarks)</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in records %}
+            <tr>
+              <td>
+                <div style="font-weight:700; color:var(--color-navy);">{{ r.full_name }}</div>
+                <div style="font-size:0.8rem; color:var(--color-muted);">ID: {{ r.id_number }} &bull; {{ r.department or '—' }}</div>
+              </td>
+              <td>
+                <div>{{ r.date }}</div>
+                <div style="font-weight:600; font-size:0.88rem; color:#1e293b;">
+                  In: {{ r.time_in or '—' }}
+                  {% if r.time_out %} &bull; Out: {{ r.time_out }}{% endif %}
+                </div>
+              </td>
+              <td>
+                <span class="late-badge">+{{ r.late_minutes }} mins</span>
+              </td>
+              <td>
+                <div style="font-weight:600; font-size:0.85rem;">{{ r.schedule_name or 'Default Schedule' }}</div>
+                <div style="font-size:0.75rem; color:var(--color-muted);">
+                  Start: {{ (r.scheduled_start or '08:00:00')[:5] }} (Grace: {{ r.grace_period_mins or 15 }}m)
+                </div>
+              </td>
+              <td>
+                <span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:0.75rem;">
+                  {{ r.scanner_id or 'Main Kiosk' }}
+                </span>
+              </td>
+              <td>
+                <div class="reason-pill">
+                  {{ r.late_reason or 'No reason provided' }}
+                </div>
+                {% if r.late_remarks %}
+                <div style="font-size:0.78rem; color:#64748b; margin-top:2px; font-style:italic;">
+                  &ldquo;{{ r.late_remarks }}&rdquo;
+                </div>
+                {% endif %}
+              </td>
+              <td>
+                {% if r.is_excused %}
+                <span class="excused-badge">Excused</span>
+                {% else %}
+                <span class="unexcused-badge">Unexcused</span>
+                {% endif %}
+              </td>
+              <td>
+                <button class="btn btn-sm btn-outline-primary"
+                        onclick='openReasonModal({{ r|tojson|safe }})'>
+                  Update Reason
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      {% if pages > 1 %}
+      <div class="card-footer">
+        <nav class="pager" aria-label="Lateness pagination">
+          {% if current_page > 1 %}
+          <a class="btn btn-outline-primary btn-sm"
+             href="{{ url_for('attendance.lateness', page=current_page-1, start_date=start_date, end_date=end_date, department=department, search=search, is_excused=is_excused) }}">&laquo; Prev</a>
+          {% else %}<button class="btn btn-outline-primary btn-sm" disabled>&laquo; Prev</button>{% endif %}
+
+          {% set ws = [1, current_page-2]|max %}
+          {% set we = [pages, current_page+2]|min %}
+          {% for p in range(ws, we+1) %}
+            {% if p == current_page %}
+            <button class="btn btn-primary btn-sm" disabled>{{ p }}</button>
+            {% else %}
+            <a class="btn btn-outline-primary btn-sm"
+               href="{{ url_for('attendance.lateness', page=p, start_date=start_date, end_date=end_date, department=department, search=search, is_excused=is_excused) }}">{{ p }}</a>
+            {% endif %}
+          {% endfor %}
+
+          {% if current_page < pages %}
+          <a class="btn btn-outline-primary btn-sm"
+             href="{{ url_for('attendance.lateness', page=current_page+1, start_date=start_date, end_date=end_date, department=department, search=search, is_excused=is_excused) }}">Next &raquo;</a>
+          {% else %}<button class="btn btn-outline-primary btn-sm" disabled>Next &raquo;</button>{% endif %}
+        </nav>
+      </div>
+      {% endif %}
+
+      {% else %}
+      <div style="text-align:center; padding:3rem; color:var(--color-muted);">
+        <p style="font-size:1.1rem; margin:0;">No late attendance records found matching filters.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Update Late Reason & Remarks -->
+<div class="modal-overlay" id="reasonModal">
+  <div class="modal-box">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <h3 style="margin:0; font-size:1.25rem;">Update Lateness Reason</h3>
+      <button type="button" onclick="closeReasonModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer;">&times;</button>
+    </div>
+
+    <form id="reasonForm" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+      <div style="background:#f8fafc; border-radius:6px; padding:0.75rem; margin-bottom:1rem; font-size:0.85rem;">
+        <div><strong>Student:</strong> <span id="m_student_name"></span> (<span id="m_student_id"></span>)</div>
+        <div><strong>Date:</strong> <span id="m_date"></span> &bull; <strong>Time In:</strong> <span id="m_time_in"></span> (<span id="m_late_mins" style="color:#b91c1c; font-weight:700;"></span>)</div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label for="m_reason_select" style="font-weight:600; font-size:0.85rem;">Why did the student get late? (Reason Category)</label>
+        <select id="m_reason_select" name="reason" class="form-control" onchange="toggleCustomReason(this.value)">
+          <option value="">-- Select Reason --</option>
+          {% for r in standard_reasons %}
+          <option value="{{ r }}">{{ r }}</option>
+          {% endfor %}
+          <option value="Other">Other / Custom Reason...</option>
+        </select>
+      </div>
+
+      <div class="form-group" id="custom_reason_group" style="display:none; margin-bottom:1rem;">
+        <label for="m_custom_reason" style="font-weight:600; font-size:0.85rem;">Custom Reason</label>
+        <input type="text" id="m_custom_reason" name="custom_reason" class="form-control" placeholder="Enter custom reason" />
+      </div>
+
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label for="m_remarks" style="font-weight:600; font-size:0.85rem;">Remarks / Supporting Explanation</label>
+        <textarea id="m_remarks" name="remarks" class="form-control" rows="3" placeholder="e.g. Traffic due to road construction on Maharlika Highway, parent excuse slip presented, etc."></textarea>
+      </div>
+
+      <div class="form-group" style="margin-bottom:1.5rem;">
+        <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.9rem; cursor:pointer;">
+          <input type="checkbox" id="m_is_excused" name="is_excused" value="1" />
+          <strong>Mark as Excused Late</strong> (Verified valid excuse)
+        </label>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+        <button type="button" class="btn btn-outline-primary" onclick="closeReasonModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Lateness Reason</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  const standardReasons = JSON.parse('{{ standard_reasons|tojson|safe }}');
+
+  function openReasonModal(r) {
+    document.getElementById('reasonForm').action = `/lateness/${r.attendance_id}/update`;
+    document.getElementById('m_student_name').innerText = r.full_name;
+    document.getElementById('m_student_id').innerText = r.id_number;
+    document.getElementById('m_date').innerText = r.date;
+    document.getElementById('m_time_in').innerText = r.time_in;
+    document.getElementById('m_late_mins').innerText = `+${r.late_minutes} mins late`;
+
+    const select = document.getElementById('m_reason_select');
+    const customGroup = document.getElementById('custom_reason_group');
+    const customInput = document.getElementById('m_custom_reason');
+
+    if (standardReasons.includes(r.late_reason)) {
+      select.value = r.late_reason;
+      customGroup.style.display = 'none';
+      customInput.value = '';
+    } else if (r.late_reason) {
+      select.value = 'Other';
+      customGroup.style.display = 'block';
+      customInput.value = r.late_reason;
+    } else {
+      select.value = '';
+      customGroup.style.display = 'none';
+      customInput.value = '';
+    }
+
+    document.getElementById('m_remarks').value = r.late_remarks || '';
+    document.getElementById('m_is_excused').checked = !!r.is_excused;
+
+    document.getElementById('reasonModal').classList.add('active');
+  }
+
+  function toggleCustomReason(val) {
+    const customGroup = document.getElementById('custom_reason_group');
+    customGroup.style.display = (val === 'Other') ? 'block' : 'none';
+  }
+
+  function closeReasonModal() {
+    document.getElementById('reasonModal').classList.remove('active');
+  }
+
+  window.onclick = function(event) {
+    const modal = document.getElementById('reasonModal');
+    if (event.target === modal) {
+      closeReasonModal();
+    }
+  };
+</script>
+{% endblock %}
