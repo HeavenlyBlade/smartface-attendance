@@ -688,3 +688,27 @@ def schedule_delete(sched_id):
     )
     flash(f"Schedule '{sched.get('name')}' deleted successfully.", "success")
     return redirect(url_for("admin.schedules"))
+
+
+# ---------------------------------------------------------------------------
+# Server Shutdown (for cleanly stopping background SmartFace.exe)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/server/shutdown", methods=["POST"])
+@role_required("admin")
+def server_shutdown():
+    """
+    POST /server/shutdown
+    Cleanly terminates the background server process after sending the HTTP
+    response, so SmartFace.exe does not linger in Task Manager.
+    """
+    from flask import abort, jsonify
+    import threading
+
+    csrf = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
+    if csrf != session.get("csrf_token"):
+        abort(403)
+
+    logger.info("Server shutdown requested by admin user_id=%s", session.get("user_id"))
+    threading.Timer(0.5, os._exit, args=[0]).start()
+    return jsonify({"ok": True, "message": "SmartFace server is shutting down."})

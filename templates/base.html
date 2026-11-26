@@ -101,6 +101,16 @@
                 ⏰ Lateness
               </a>
             </li>
+            <li role="separator" style="border-top:1px solid #e2e8f0;margin:0.35rem 0.5rem;"></li>
+            <li role="menuitem">
+              <button type="button"
+                      class="nav-dropdown-item"
+                      id="stop-server-btn"
+                      onclick="stopSmartFaceServer()"
+                      style="width:calc(100% - 0.8rem);background:none;border:none;cursor:pointer;text-align:left;color:#dc2626;font-family:inherit;">
+                ⏻ Stop Server
+              </button>
+            </li>
           </ul>
         </li>
         <li class="nav-item">
@@ -288,6 +298,23 @@
         });
       });
     })();
+
+    function stopSmartFaceServer() {
+      if (!confirm('Stop the SmartFace background server?\n\nYou will need to relaunch SmartFace to use the app again.')) {
+        return;
+      }
+      fetch('{{ url_for("admin.server_shutdown") }}', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': window.CSRF_TOKEN || '' }
+      })
+      .then(function (r) { return r.json(); })
+      .then(function () {
+        showToast('SmartFace server stopped. You may close this tab.', 'info');
+      })
+      .catch(function () {
+        showToast('SmartFace server stopped.', 'info');
+      });
+    }
 
     /* ------------------------------------------------------------------
        Toast utility

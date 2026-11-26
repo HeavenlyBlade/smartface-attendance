@@ -98,6 +98,45 @@ if getattr(sys, 'frozen', False):
 URL = 'http://localhost:5000'
 _server_error = None
 
+
+def _is_port_in_use(host='127.0.0.1', port=5000) -> bool:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((host, port)) == 0
+
+
+def _ensure_single_instance() -> bool:
+    """
+    Ensure no stale SmartFace.exe processes are holding port 5000.
+    Returns True if we should start the server, or False if another
+    server (e.g. `py app.py`) is already serving port 5000.
+    """
+    if getattr(sys, 'frozen', False):
+        try:
+            import subprocess
+            subprocess.run(
+                ['taskkill', '/F', '/FI', f'PID ne {os.getpid()}', '/IM', 'SmartFace.exe'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=0x08000000,  # CREATE_NO_WINDOW
+                timeout=5,
+            )
+            # Wait briefly for Windows to release port 5000
+            for _ in range(15):
+                if not _is_port_in_use():
+                    break
+                time.sleep(0.2)
+        except Exception as exc:
+            logger.warning('Single-instance cleanup warning: %s', exc)
+
+    if _is_port_in_use():
+        logger.info('Port 5000 already in use; opening existing server in browser.')
+        webbrowser.open(URL)
+        return False
+    return True
+
+
 def _serve():
     global _server_error
     try:
@@ -127,6 +166,9 @@ def _wait_for_server(timeout=15):
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
+    if not _ensure_single_instance():
+        sys.exit(0)
+
     t = threading.Thread(target=_serve, daemon=True)
     t.start()
 
