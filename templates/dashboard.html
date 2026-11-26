@@ -70,13 +70,21 @@
   </div>
 
   <!-- Quick Actions -->
-  {% if session.get('role') == 'admin' %}
+  {% if session.get('role') in ['admin', 'faculty'] %}
   <div class="quick-actions">
-    <a href="{{ url_for('attendance.kiosk') }}"  class="btn btn-primary">
+    <a href="{{ url_for('attendance.kiosk') }}" class="btn btn-primary">
       <i data-lucide="camera" style="width:15px;height:15px"></i> Open Kiosk
     </a>
+    {% if session.get('role') == 'admin' %}
     <a href="{{ url_for('admin.enroll_page') }}" class="btn btn-gold">
       <i data-lucide="user-plus" style="width:15px;height:15px"></i> Enroll User
+    </a>
+    {% endif %}
+    <a href="{{ url_for('admin.schedules') }}" class="btn btn-outline-primary">
+      <i data-lucide="calendar" style="width:15px;height:15px"></i> Schedules
+    </a>
+    <a href="{{ url_for('attendance.lateness') }}" class="btn btn-outline-primary">
+      <i data-lucide="clock" style="width:15px;height:15px"></i> Lateness Insights
     </a>
     <a href="{{ url_for('attendance.reports') }}" class="btn btn-outline-primary">
       <i data-lucide="bar-chart-2" style="width:15px;height:15px"></i> Reports
@@ -86,6 +94,63 @@
     </a>
   </div>
   {% endif %}
+
+  <!-- Active Schedules Today Widget -->
+  <div class="card" style="margin-bottom:1.75rem;">
+    <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+      <span class="card-header-title" style="display:flex; align-items:center; gap:0.5rem; font-size:1rem;">
+        <i data-lucide="calendar-check" style="width:18px;height:18px;color:#D4AF37;"></i>
+        Active Schedules Today (Students & Faculty)
+      </span>
+      {% if session.get('role') in ['admin', 'faculty'] %}
+      <a href="{{ url_for('admin.schedules') }}" class="btn btn-sm btn-outline-primary">
+        <i data-lucide="settings" style="width:14px;height:14px;vertical-align:-2px;"></i> Schedule Maker &rarr;
+      </a>
+      {% endif %}
+    </div>
+    <div class="card-body" style="padding:1.25rem 1.5rem;">
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:1rem;">
+        {% if student_schedules %}
+          {% for s in student_schedules %}
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:0.85rem 1rem; border-left:4px solid #D4AF37;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+              <strong style="color:var(--color-navy); font-size:0.92rem;">{{ s.name }}</strong>
+              {% if s.department in ['BSA', 'BSBA', 'BSIT', 'BSCE', 'BSIE'] %}
+                <span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700;">{{ s.department }}</span>
+              {% else %}
+                <span class="badge" style="background:#e2e8f0; color:#334155;">{{ s.department or 'All Students' }}</span>
+              {% endif %}
+            </div>
+            <div style="font-size:0.8rem; color:#475569; display:flex; gap:0.75rem; flex-wrap:wrap;">
+              <span><strong>Time In:</strong> {{ s.start_time[:5] }}</span>
+              <span><strong>Grace Cutoff:</strong> {{ s.start_time[:5] }} + {{ s.grace_period_mins }}m</span>
+              <span><strong>Time Out:</strong> {{ s.end_time[:5] }}</span>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div style="color:var(--color-muted); font-size:0.85rem; padding:0.5rem;">
+            No student schedules configured. <a href="{{ url_for('admin.schedules') }}">Open Schedule Maker</a>
+          </div>
+        {% endif %}
+
+        {% if faculty_schedules %}
+          {% for s in faculty_schedules %}
+          <div style="background:#faf5ff; border:1px solid #f3e8ff; border-radius:8px; padding:0.85rem 1rem; border-left:4px solid #9333ea;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+              <strong style="color:#581c87; font-size:0.92rem;">{{ s.name }}</strong>
+              <span class="badge" style="background:#f3e8ff; color:#6b21a8; font-weight:700;">Faculty Shift</span>
+            </div>
+            <div style="font-size:0.8rem; color:#6b21a8; display:flex; gap:0.75rem; flex-wrap:wrap;">
+              <span><strong>Shift:</strong> {{ s.start_time[:5] }} &ndash; {{ s.end_time[:5] }}</span>
+              <span><strong>Grace:</strong> {{ s.grace_period_mins }}m</span>
+            </div>
+          </div>
+          {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
 
   <!-- Charts row -->
   <div class="charts-row">

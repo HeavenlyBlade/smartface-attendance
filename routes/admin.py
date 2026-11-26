@@ -70,16 +70,30 @@ def enroll_page():
     """
     GET /enroll
 
-    Renders the face enrollment form.  The page streams a live webcam preview
+    Renders the face enrollment form. The page streams a live webcam preview
     via getUserMedia (handled in static/js/enroll.js, added in Task 2.5).
     The POST submission is handled by POST /api/enroll in routes/api.py.
     """
     user_id = request.args.get("user_id", type=int)
-    users_list = execute_query("SELECT id, full_name FROM users WHERE is_active = 1 AND role = 'student' ORDER BY full_name", fetchall=True)
+    users_list = execute_query(
+        "SELECT id, full_name FROM users WHERE is_active = 1 AND role = 'student' ORDER BY full_name",
+        fetchall=True,
+    )
     preselect_user = None
     if user_id:
-        preselect_user = execute_query("SELECT id, full_name FROM users WHERE id = ?", params=(user_id,), fetchone=True)
-    return render_template("enroll.html", users=users_list, preselect_user=preselect_user)
+        preselect_user = execute_query(
+            "SELECT id, full_name FROM users WHERE id = ?",
+            params=(user_id,),
+            fetchone=True,
+        )
+    active_scheds = get_all_schedules(only_active=True)
+    return render_template(
+        "enroll.html",
+        users=users_list,
+        preselect_user=preselect_user,
+        schedules=active_scheds,
+        student_programs=STUDENT_PROGRAMS,
+    )
 
 
 # ---------------------------------------------------------------------------

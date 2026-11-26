@@ -107,6 +107,17 @@ def dashboard():
         records = []
         chart_labels = chart_present = chart_late = []
 
+    try:
+        from models.schedule import get_all_schedules
+        active_scheds = get_all_schedules(only_active=True)
+        student_scheds = [s for s in active_scheds if s.get("role") == "student"]
+        faculty_scheds = [s for s in active_scheds if s.get("role") == "faculty"]
+    except Exception as exc:
+        logger.error("dashboard schedules load error — %s", exc)
+        active_scheds = []
+        student_scheds = []
+        faculty_scheds = []
+
     return render_template(
         "dashboard.html",
         now=datetime.now(),
@@ -115,6 +126,9 @@ def dashboard():
         total_users=total_users,
         absent_count=absent_count,
         records=records,
+        active_schedules=active_scheds,
+        student_schedules=student_scheds,
+        faculty_schedules=faculty_scheds,
         chart_labels=_json.dumps(chart_labels),
         chart_present=_json.dumps(chart_present),
         chart_late=_json.dumps(chart_late),

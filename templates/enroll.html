@@ -755,6 +755,21 @@
         <input type="hidden" id="department" name="department" value="BSIT" required />
         <div class="invalid-feedback" id="department-error" role="alert"></div>
 
+        <!-- Assigned Schedule Preview -->
+        <div class="form-group" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:0.85rem 1rem; margin-bottom:1rem; border-left:4px solid #D4AF37;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+            <label style="font-weight:700; font-size:0.82rem; color:var(--color-navy); margin:0;">
+              Assigned Class / Shift Schedule
+            </label>
+            <a href="{{ url_for('admin.schedules') }}" target="_blank" style="font-size:0.75rem; color:#b45309; text-decoration:underline; font-weight:600;">
+              Schedule Maker &rarr;
+            </a>
+          </div>
+          <div id="enroll-schedule-preview" style="font-size:0.84rem; color:#334155; line-height:1.4;">
+            Loading matching schedule...
+          </div>
+        </div>
+
         <!-- RA 10173 Consent -->
         <div class="consent-box">
           <p class="consent-title">Biometric Data Consent --RA 10173</p>
@@ -830,6 +845,43 @@
     apiUrl: '/api/enroll'
   };
 
+  var enrollSchedules = {{ schedules|tojson|safe if schedules else '[]' }};
+
+  function updateEnrollSchedulePreview() {
+    var preview = document.getElementById('enroll-schedule-preview');
+    if (!preview) return;
+    var role = document.getElementById('role').value;
+    var list = enrollSchedules || [];
+
+    if (role === 'student') {
+      var prog = document.getElementById('student-program-select').value;
+      var match = list.find(function(s) {
+        return s.role === 'student' && s.department === prog && s.is_active;
+      }) || list.find(function(s) {
+        return s.role === 'student' && (!s.department || s.is_default) && s.is_active;
+      });
+
+      if (match) {
+        preview.innerHTML = '<strong>' + match.name + '</strong> &bull; ' +
+          match.start_time.substring(0,5) + ' &ndash; ' + match.end_time.substring(0,5) +
+          ' <span style=\"color:#b45309;font-weight:600;\">(' + match.grace_period_mins + 'm grace cutoff)</span>';
+      } else {
+        preview.innerHTML = 'Standard Student Schedule &bull; 08:00 &ndash; 17:00 (15m grace cutoff)';
+      }
+    } else {
+      var facMatch = list.find(function(s) {
+        return s.role === 'faculty' && s.is_active;
+      });
+      if (facMatch) {
+        preview.innerHTML = '<strong>' + facMatch.name + '</strong> &bull; ' +
+          facMatch.start_time.substring(0,5) + ' &ndash; ' + facMatch.end_time.substring(0,5) +
+          ' <span style=\"color:#6b21a8;font-weight:600;\">(' + facMatch.grace_period_mins + 'm grace cutoff)</span>';
+      } else {
+        preview.innerHTML = 'Standard Faculty Shift &bull; 07:30 &ndash; 17:30 (15m grace cutoff)';
+      }
+    }
+  }
+
   function handleEnrollRoleChange(role) {
     var studentGroup = document.getElementById('student-program-group');
     var facultyGroup = document.getElementById('faculty-department-group');
@@ -844,14 +896,22 @@
       facultyGroup.style.display = '';
       deptHidden.value = document.getElementById('faculty-department-input').value.trim() || 'General Faculty';
     }
+    updateEnrollSchedulePreview();
   }
 
   function syncStudentProgram(val) {
     document.getElementById('department').value = val;
+    updateEnrollSchedulePreview();
   }
 
   function syncFacultyDepartment(val) {
     document.getElementById('department').value = val.trim();
+    updateEnrollSchedulePreview();
   }
+
+  // Initial call on load
+  document.addEventListener('DOMContentLoaded', function() {
+    updateEnrollSchedulePreview();
+  });
 </script>
 {% endblock %}
