@@ -39,7 +39,7 @@ def get_all_schedules(only_active: bool = False, role: Optional[str] = None) -> 
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
     sql += " ORDER BY role ASC, is_default DESC, name ASC"
-    rows = execute_query(sql, params=tuple(params) if params else None, fetchall=True) or []
+    rows = execute_query(sql, params=tuple(params), fetchall=True) or []
     return [dict(r) for r in rows]
 
 

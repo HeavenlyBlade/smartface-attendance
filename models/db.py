@@ -75,7 +75,7 @@ def execute_query(sql, params=(), fetchone=False, fetchall=False, commit=False):
     cur = conn.cursor()
     try:
         is_insert = sql.strip().upper().startswith("INSERT")
-        cur.execute(sql, params)
+        cur.execute(sql, () if params is None else params)
 
         if fetchall:
             rows = cur.fetchall()
