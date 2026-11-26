@@ -237,6 +237,81 @@ ul, ol { list-style: none; }
   font-size: 0.82rem; font-weight: 500; color: var(--color-white);
 }
 
+/* --------------------------------------------------------------------------
+   Navbar Dropdown  (Manage ▾ menu)
+   -------------------------------------------------------------------------- */
+.nav-dropdown {
+  position: relative;
+}
+
+.nav-dropdown-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: inherit;
+}
+
+.nav-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  min-width: 170px;
+  list-style: none;
+  padding: 0.4rem 0;
+  z-index: 2000;
+  border: 1px solid rgba(0,0,0,0.07);
+}
+
+.nav-dropdown-menu::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0 7px 7px 7px;
+  border-style: solid;
+  border-color: transparent transparent #fff transparent;
+  filter: drop-shadow(0 -2px 2px rgba(0,0,0,0.08));
+}
+
+.nav-dropdown.open .nav-dropdown-menu {
+  display: block;
+}
+
+.nav-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  color: #1a1a1a;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  border-radius: 6px;
+  margin: 0.1rem 0.4rem;
+  transition: background var(--transition), color var(--transition);
+  white-space: nowrap;
+}
+
+.nav-dropdown-item:hover,
+.nav-dropdown-item.active {
+  background: #f0faf5;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.nav-dropdown-item.active {
+  font-weight: 600;
+}
+
 /* Hamburger */
 .navbar-toggler {
   display: none;
@@ -1006,6 +1081,33 @@ select.form-control {
   .navbar-nav.open { display: flex; }
   .navbar-toggler  { display: flex; }
   .navbar          { position: relative; }
+
+  /* In mobile drawer: flatten the dropdown inline */
+  .nav-dropdown { position: static; }
+  .nav-dropdown-menu {
+    display: block !important;
+    position: static;
+    transform: none;
+    background: rgba(255,255,255,0.1);
+    box-shadow: none;
+    border: none;
+    border-radius: 8px;
+    min-width: 0;
+    padding: 0.2rem 0 0.2rem 1rem;
+  }
+  .nav-dropdown-menu::before { display: none; }
+  .nav-dropdown-toggle { display: none; }
+  .nav-dropdown-item {
+    color: rgba(255,255,255,0.92);
+    font-size: 0.84rem;
+    padding: 0.4rem 0.75rem;
+    margin: 0.1rem 0;
+  }
+  .nav-dropdown-item:hover,
+  .nav-dropdown-item.active {
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+  }
 }
 
 @media (max-width: 768px) {

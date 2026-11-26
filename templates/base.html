@@ -82,17 +82,26 @@
             Users
           </a>
         </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'admin.schedules' %}active{% endif %}"
-             href="{{ url_for('admin.schedules') }}">
-            Schedules
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'attendance.lateness' %}active{% endif %}"
-             href="{{ url_for('attendance.lateness') }}">
-            Lateness
-          </a>
+        <!-- Schedules & Lateness dropdown -->
+        <li class="nav-item nav-dropdown">
+          <button class="nav-link nav-dropdown-toggle {% if request.endpoint in ('admin.schedules','attendance.lateness') %}active{% endif %}"
+                  type="button" aria-haspopup="true" aria-expanded="false">
+            Manage ▾
+          </button>
+          <ul class="nav-dropdown-menu" role="menu">
+            <li role="menuitem">
+              <a class="nav-dropdown-item {% if request.endpoint == 'admin.schedules' %}active{% endif %}"
+                 href="{{ url_for('admin.schedules') }}">
+                📅 Schedules
+              </a>
+            </li>
+            <li role="menuitem">
+              <a class="nav-dropdown-item {% if request.endpoint == 'attendance.lateness' %}active{% endif %}"
+                 href="{{ url_for('attendance.lateness') }}">
+                ⏰ Lateness
+              </a>
+            </li>
+          </ul>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'attendance.reports' %}active{% endif %}"
@@ -121,17 +130,26 @@
             Kiosk
           </a>
         </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'admin.schedules' %}active{% endif %}"
-             href="{{ url_for('admin.schedules') }}">
-            Schedules
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'attendance.lateness' %}active{% endif %}"
-             href="{{ url_for('attendance.lateness') }}">
-            Lateness
-          </a>
+        <!-- Schedules & Lateness dropdown for faculty -->
+        <li class="nav-item nav-dropdown">
+          <button class="nav-link nav-dropdown-toggle {% if request.endpoint in ('admin.schedules','attendance.lateness') %}active{% endif %}"
+                  type="button" aria-haspopup="true" aria-expanded="false">
+            Manage ▾
+          </button>
+          <ul class="nav-dropdown-menu" role="menu">
+            <li role="menuitem">
+              <a class="nav-dropdown-item {% if request.endpoint == 'admin.schedules' %}active{% endif %}"
+                 href="{{ url_for('admin.schedules') }}">
+                📅 Schedules
+              </a>
+            </li>
+            <li role="menuitem">
+              <a class="nav-dropdown-item {% if request.endpoint == 'attendance.lateness' %}active{% endif %}"
+                 href="{{ url_for('attendance.lateness') }}">
+                ⏰ Lateness
+              </a>
+            </li>
+          </ul>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'attendance.reports' %}active{% endif %}"
@@ -245,6 +263,30 @@
           toggler.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
         });
       }
+    })();
+
+    /* ------------------------------------------------------------------
+       Dropdown menus (Manage ▾)
+    ------------------------------------------------------------------ */
+    (function () {
+      document.querySelectorAll('.nav-dropdown-toggle').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          const item = btn.closest('.nav-dropdown');
+          const isOpen = item.classList.toggle('open');
+          btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+          // close all other dropdowns
+          document.querySelectorAll('.nav-dropdown').forEach(function (d) {
+            if (d !== item) { d.classList.remove('open'); }
+          });
+        });
+      });
+      // Close dropdown when clicking outside
+      document.addEventListener('click', function () {
+        document.querySelectorAll('.nav-dropdown').forEach(function (d) {
+          d.classList.remove('open');
+        });
+      });
     })();
 
     /* ------------------------------------------------------------------
